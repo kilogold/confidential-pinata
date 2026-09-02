@@ -17,12 +17,12 @@ flowchart TB
 
 - **Initialize** — game master locks HP amount and confidential reward for this piñata. Also starts a **new session** after game-over. Not valid while live.
 - **Register** — admit a player; set up their reward token account. Only while live.
-- **Attack** — pay fixed SOL into this piñata’s pile; HP − 1; evaluate live vs kill. Only while live.
+- **Attack** — pay fixed SOL into this piñata’s pile; HP − 1; evaluate live vs kill. Only while live. Not player-only: the **GM’s keys live on a relay** that attaches confidential HP proofs (and, on a kill, reward proofs) so the GM is not in the loop per strike. Later, an independent **arbiter** is intended to replace this GM-hosted relay; the GM must not keep those keys.
 - **Close** — tear down this piñata’s PDAs; return rent SOL. Only after game-over.
 
 ## Killing Attack
 
-When remaining HP is proven zero (ElGamal proof program), the same **Attack** enters game-over and settles atomically:
+When remaining HP is proven zero (ElGamal proof program), the same **Attack** enters game-over and settles atomically. The relay already produces HP proofs, so it can also produce the confidential reward transfer proofs (the killer does not know the reward plaintext).
 
 ```mermaid
 flowchart LR

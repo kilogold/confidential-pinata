@@ -11,6 +11,8 @@ Version 1 uses Token-2022 **Confidential Balances** so HP and reward amounts sta
 
 ## What observers can see
 
+Hidden means hidden from **players and spectators**. The game master already knows the plaintext amounts they locked.
+
 ```mermaid
 flowchart TB
   subgraph public [Public]
@@ -19,15 +21,21 @@ flowchart TB
     solFee[SOL fee and pile size]
     died[Piñata died on this strike]
   end
-  subgraph hidden [Encrypted]
-    hp[Remaining HP]
-    reward[Reward amount]
-    priorHp["Prior HP beyond at least 1"]
+  subgraph hiddenFromPublic [Encrypted from players and spectators]
+    hp[Remaining HP during play]
+    reward[Reward amount even after win]
   end
-  public -.->|"cannot infer"| hidden
+  subgraph gmKnows [Game master knows]
+    initialHp[Initial HP they locked]
+    remainingHp["Remaining HP = initial minus public strike count"]
+    rewardAmt[Reward they locked]
+  end
+  public -.->|"cannot infer during play"| hiddenFromPublic
 ```
 
-Zero remaining HP is not a public field. The **ElGamal proof program** attests that the remaining HP ciphertext encrypts zero. Observers learn the piñata died on this strike; they do not learn what HP was before (beyond “at least 1”).
+Zero remaining HP is not a public field. The **ElGamal proof program** attests that the remaining HP ciphertext encrypts zero. Observers learn the piñata died on this strike.
+
+They cannot infer **remaining** HP during play (they do not know initial HP). At game-over, public strike count **is** initial HP. “Prior remaining HP” on the killing strike is 1 — that follows from 1 HP per hit, not from decrypting the ciphertext.
 
 ## Network
 
