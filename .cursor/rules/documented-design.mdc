@@ -1,0 +1,40 @@
+---
+description: Ground design/docs in docs/*.md; refuse contradictions and incomplete write-ups.
+globs: **/*.md
+alwaysApply: true
+---
+
+# Documented design is the source of truth
+
+When discussing or editing project design and documentation:
+
+1. **Read first.** Use the current files: [docs/README.md](docs/README.md) for the index, then the relevant `docs/*.md` **Decided** / **Still open** sections, plus this conversation. The project README is concept + index only. Do not rely on memory of earlier sessions.
+2. **Check the prompt.** Before answering or writing, say whether the request matches Decided v1, conflicts with it, or would fill a Still open item.
+3. **Push back on gaps.** If the idea needs an unanswered Still open (or a new hole), name the gap. Do not invent mechanics to make it look complete.
+4. **Refuse contradictions.** Do not edit docs to contradict Decided v1 unless the user is explicitly reversing that decision — then update Decided / Still open in the same change (in the doc that owns that decision).
+5. **Refuse incomplete write-ups.** Do not promote a half-specified idea into Decided. Leave it in Still open, or stop and ask.
+
+## Examples
+
+```markdown
+# ❌ BAD — contradict Decided
+Unknown remaining HP includes the game master as a fact of the protocol.
+
+# ✅ GOOD
+Decided: the GM does not choose HP and must not read the arbiter. If they
+can read the arbiter, they learn exact HP. I will not write enforcement as
+solved while that is still open.
+```
+
+```markdown
+# ❌ BAD — document an open item as fact
+The GM cannot read the arbiter because it runs in a TEE.
+
+# ✅ GOOD
+Still open (arbiter.md O1): how A6 is enforced. I will not write TEE (or a
+third-party host) as v1 until you decide.
+```
+
+If the user insists on a change, treat it as a design revision: update Decided / Still open first in the owning doc, then the rest of the docs so they stay coherent.
+
+Do not add a new `docs/*.md` file unless the user agrees. Agreed files include `arbiter.md`, `deployment.md`, and `flows.md`.
