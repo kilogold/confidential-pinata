@@ -40,7 +40,9 @@ flowchart TB
   public -.->|"cannot infer exactly during play"| hiddenFromPublic
 ```
 
-Zero remaining HP is not a public field. The **ElGamal proof program** attests that the remaining HP ciphertext encrypts zero. Observers learn the piñata died on this strike.
+Zero remaining HP is not a public field. Token-2022 `ConfidentialBurn` does not attest leftover HP is zero. A killing Attack includes `VerifyZeroCiphertext` (ZK ElGamal Proof Program); the Piñata program binds that proof to this vault’s post-burn `available_balance` ([program.md](program.md) **D3**). Observers learn the piñata died on this strike. An Attack with no such proof stays live even if leftover HP is actually zero ([arbiter.md](arbiter.md) **A7**).
+
+The proof program has no documented leftover-nonzero instruction. Its range proofs certify `[0, 2ⁿ)` (zero included). v1 does not compose a shifted range to exclude 0.
 
 They cannot infer **remaining** HP during play (they do not know the arbiter’s price or the offset). At game-over, public strike count **is** realized initial HP. “Prior remaining HP” on the killing strike is 1 — that follows from 1 HP per hit, not from decrypting the ciphertext.
 
@@ -51,8 +53,8 @@ Version 1 targets a test network. Confidential Balances need a ZK-capable cluste
 ## Decided
 
 - Two token types: **HP** (confidential; 1 token = 1 HP) and **reward** (public token; conceptually a stablecoin). Confidential Balances apply to HP only
-- Initial HP is confidential-minted so public deposit / public mint supply cannot leak the draw
-- Zero remaining HP is attested by the **ElGamal proof program** (no public HP number)
+- Initial HP is confidential-minted so public deposit / public mint supply cannot leak the draw. Token-2022 `ConfidentialMint` requires the HP mint authority as a signer (arbiter backend; [deployment.md](deployment.md) **DEP5**) and credits the HP vault’s **pending** balance. The Initialize transaction MUST `ApplyPendingBalance` immediately after (HP vault owner: instance PDA, via the program) so minted HP is **available**. Token-2022 `ConfidentialBurn` (Attack HP − 1) requires the HP vault owner plus burn proofs, **not** mint authority. `ApplyPendingBurn` requires mint authority and only folds `pending_burn` into encrypted supply. `UpdateDecryptableSupply` requires mint authority and the arbiter-held supply AES key; it refreshes decryptable supply after `ApplyPendingBurn`. The HP mint’s supply ElGamal keypair and supply AES key MUST live on the arbiter backend, distinct from vault ElGamal keys ([arbiter.md](arbiter.md) **A2**).
+- Zero remaining HP is attested only when an Attack includes `VerifyZeroCiphertext` bound to the post-burn HP vault ([program.md](program.md) **D3**). `ConfidentialBurn` alone is not a kill. The proof program does not document a leftover-nonzero / zero-exclusive range proof; v1 does not roll one ([arbiter.md](arbiter.md) **A7**)
 - Exact HP, the offset, and the offset range are **never published**. At game-over, strike count **is** realized initial HP
 
 ## Still open

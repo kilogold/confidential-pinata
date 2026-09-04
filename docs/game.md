@@ -4,9 +4,9 @@ Smash a **glass piñata**: you can see the prize, not how much HP is left. Sever
 
 ## Roles
 
-- **Game master** — the house. Initializes a piñata, locks a **public** reward, sets the strike fee, receives the SOL pile at game-over. Does **not** pick HP. May speculate a break-even floor from public prices; does not know the arbiter’s quote, the offset, or remaining HP exactly. Must not operate live confidential proofs or see the draw: those sit on the **arbiter**.
-- **Arbiter** — v1 relay. Specified in [arbiter.md](arbiter.md). Prices HP, holds vault keys, attaches proofs. The game master MUST NOT read it.
-- **Player** — registers, pays SOL to attack, may win the public token reward. Sees the prize. Does not know remaining HP.
+- **Game master** — the house. Initializes a piñata through the **arbiter webapp**, locks a **public** reward, sets the strike fee, receives the SOL pile at game-over. Does **not** pick HP. May speculate a break-even floor from public prices; does not know the arbiter’s quote, the offset, or remaining HP exactly. Must not operate live confidential proofs or see the draw: those sit on the **arbiter**.
+- **Arbiter** — v1 webapp (frontend, backend, and Piñata program client). Specified in [arbiter.md](arbiter.md). Primary client for GM and players ([deployment.md](deployment.md) **DEP4**). Prices HP, holds vault keys and HP mint supply keys in the backend, attaches proofs. The game master MUST NOT read the backend.
+- **Player** — registers and attacks through the arbiter webapp, pays SOL to attack, may win the public token reward. Sees the prize. Does not know remaining HP.
 - **Identity** — every participant presents a SAS attestation whose person id is unique. The GM cannot Attack this piñata (same person id). A second wallet with a second attestation for the same person is an issuer failure.
 
 ## Rules
@@ -15,7 +15,7 @@ Smash a **glass piñata**: you can see the prize, not how much HP is left. Sever
 - A registered player may Attack **without a cap** while the piñata is live
 - Strike SOL goes into **that piñata’s pile** — not the player prize
 - The prize is the **public token reward** (vault balance)
-- On the killing blow: game master gets the SOL pile; killer gets the reward
+- On the killing blow: game master gets the SOL pile; killer gets the reward. Kill is the Attack that carries a bound leftover-HP-zero proof ([program.md](program.md) **D3**). An omitted last-hit proof is arbiter censorship ([arbiter.md](arbiter.md) **A7**).
 - The game master’s **person id** cannot Attack. The game master MUST NOT read the arbiter ([arbiter.md](arbiter.md) **A6**). Enforcement is still open (**O1**).
 - After a kill: **Close** (GM only; rent back to the GM) or **Initialize** again (new session, same piñata)
 
@@ -26,8 +26,8 @@ flowchart LR
   init[Initialize] --> live[Piñata live]
   live --> register[Register]
   register --> attack[Attack]
-  attack -->|"HP still above zero"| live
-  attack -->|"HP proven zero"| settle["Killing Attack settles: GM gets SOL pile, killer gets reward"]
+  attack -->|"no leftover-zero proof"| live
+  attack -->|"bound leftover-zero proof"| settle["Killing Attack settles: GM gets SOL pile, killer gets reward"]
   settle --> over[Game over]
   over --> close[Close PDAs return rent]
   over --> init
