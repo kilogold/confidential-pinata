@@ -1,13 +1,13 @@
 # Program
 
-Rules engine over confidential HP and a public reward. **Many instances:** each piñata is its own PDA set ([deployment.md](deployment.md)). Instructions always target one piñata. The off-chain arbiter webapp is specified in [arbiter.md](arbiter.md).
+Rules engine over confidential HP and a public reward. **Many instances:** each piñata is its own PDA set; they share one HP mint ([deployment.md](deployment.md) **DEP6**). Instructions always target one piñata. The off-chain arbiter webapp is specified in [arbiter.md](arbiter.md).
 
 ## Instructions
 
-- **Initialize** — game master pays rent for this session’s PDAs, locks a **public** reward, and sets the strike fee. The **arbiter** ([arbiter.md](arbiter.md)) prices the reward, sets HP, and confidential-mints it. `ConfidentialMint` is a CPI during Initialize; `ApplyPendingBalance` follows immediately so minted HP is available. Also starts a **new session** after game-over. Not valid while live.
+- **Initialize** — game master pays rent for this session’s PDAs, locks a **public** reward, and sets the strike fee. The **arbiter** ([arbiter.md](arbiter.md)) prices the reward, sets HP, and confidential-mints it into this instance’s HP vault on the **shared** HP mint ([deployment.md](deployment.md) **DEP6**). `ConfidentialMint` is a CPI during Initialize; `ApplyPendingBalance` follows immediately so minted HP is available (arbiter vault authority, no PDA signer). Also starts a **new session** after game-over. Not valid while live.
 - **Register** — admit a player; set up their reward token account. Only while live.
-- **Attack** — pay fixed SOL into this piñata’s pile; HP − 1; evaluate live vs kill. Only while live. Not player-only: assembled by the arbiter webapp’s program client ([deployment.md](deployment.md) **DEP4**); the arbiter attaches confidential HP proofs. Live versus kill is whether this Attack includes a bound `VerifyZeroCiphertext` proof (**D3**), not whether leftover HP is actually zero. On a kill, the same instruction pays the public reward (no confidential reward proofs).
-- **Close** — **GM only.** Tear down this piñata’s PDAs; rent SOL returns to the GM (they paid it at Initialize). Only after game-over.
+- **Attack** — pay fixed SOL into this piñata’s pile; HP − 1; evaluate live vs kill. Only while live. Not player-only: assembled by the arbiter webapp’s program client ([deployment.md](deployment.md) **DEP4**); the arbiter attaches confidential HP proofs and signs as HP vault authority on the `ConfidentialBurn` CPI (**DEP6**). Live versus kill is whether this Attack includes a bound `VerifyZeroCiphertext` proof (**D3**), not whether leftover HP is actually zero. On a kill, the same instruction pays the public reward (no confidential reward proofs).
+- **Close** — **GM only** as signer and rent recipient. Tear down this piñata’s PDAs (including this instance’s HP token account); rent SOL returns to the GM (they paid it at Initialize). MUST NOT close the shared HP mint (**DEP6**). Only after game-over. Assembled by the arbiter webapp ([deployment.md](deployment.md) **DEP4**): the backend attaches the leftover-zero proof and signs as HP vault authority; the GM completes the signature ([flows.md](flows.md) **F0**). Not settlement (pile and reward already moved on the killing Attack, **D3**).
 
 ## Killing Attack
 
@@ -47,7 +47,7 @@ Normative language follows RFC 2119. These decisions apply to the on-chain progr
 
 ### D1. Surface and instances
 
-The program MUST expose exactly four instructions: **Initialize**, **Register**, **Attack**, and **Close**. Each piñata is an independent instance with its own PDA set ([deployment.md](deployment.md) **DEP1**). Every instruction MUST target one instance.
+The program MUST expose exactly four instructions: **Initialize**, **Register**, **Attack**, and **Close**. Each piñata is an independent instance with its own PDA set ([deployment.md](deployment.md) **DEP1**). Every instruction MUST target one instance. All instances MUST use the same HP mint (**DEP6**).
 
 ### D2. Hit points at Initialize
 
@@ -55,11 +55,11 @@ The game master MUST NOT choose HP. HP at Initialize MUST be set by the arbiter 
 
 ### D3. Attack and kill settlement
 
-Attack MUST debit one HP (`ConfidentialBurn`) and credit the instance SOL pile by the fixed strike fee. Token-2022 `ConfidentialBurn` succeeds whether leftover HP is zero or not. Homomorphic leftover-zero is not an identity ciphertext. The program MUST NOT treat a vault `memcmp` of zeros as a kill check and MUST NOT decrypt remaining HP.
+Attack MUST debit one HP (`ConfidentialBurn`) and credit the instance SOL pile by the fixed strike fee. That burn MUST be a CPI from Attack so the hit and the fee stay one instruction. The Token-2022 vault-authority signer on that CPI MUST be the arbiter, not a PDA ([deployment.md](deployment.md) **DEP6**). Token-2022 `ConfidentialBurn` succeeds whether leftover HP is zero or not. Homomorphic leftover-zero is not an identity ciphertext. The program MUST NOT treat a vault `memcmp` of zeros as a kill check and MUST NOT decrypt remaining HP.
 
 The on-chain live-versus-kill branch MUST be whether this Attack includes a ZK ElGamal Proof Program `VerifyZeroCiphertext` proof, not whether leftover HP is actually zero. The program MUST CPI that program to verify the proof when it is present. A failed CPI MUST fail the whole Attack (burn included). The runtime does not allow “try the zero-proof and fall through to live.”
 
-- **Proof absent.** The instance MUST stay live. The program MUST NOT pay the SOL pile or the reward. This remains required even if leftover HP is actually zero. That omit path is arbiter censorship ([arbiter.md](arbiter.md) **A7**), not a missing leftover-nonzero check.
+- **Proof absent.** The instance MUST stay live. The program MUST NOT pay the SOL pile or the reward. This remains required even if leftover HP is actually zero. A conforming arbiter MUST NOT submit that Attack (**A5**). The instruction is still theoretically vulnerable because v1 does not require a leftover-nonzero proof; that path is only a malicious or exploited arbiter ([arbiter.md](arbiter.md) **A7**), which v1 accepts.
 - **Proof present.** After a successful CPI, the program MUST byte-compare the proof context to the HP vault **after** the burn: context ElGamal pubkey MUST equal the vault’s ElGamal pubkey; context ciphertext MUST equal the vault’s `available_balance`. Mismatch MUST fail the Attack (an isolated `Encrypt(0)` is not this vault). Match MUST enter game-over on the same Attack and MUST settle atomically: the game master receives the SOL pile; the attacker receives the public reward.
 
 The arbiter MUST attach confidential HP proofs as specified in [arbiter.md](arbiter.md) **A5**. The reward transfer MUST be a public token transfer (no confidential reward proofs).
@@ -68,4 +68,4 @@ v1 MUST NOT require a leftover-HP-nonzero proof on the live path. The proof prog
 
 ### D4. Close and session reuse
 
-After game-over, the only valid instructions are **Close** and **Initialize** (new session on the same piñata). Close MUST be callable only by the game master. Rent MUST return to the game master (they paid it at Initialize). Close MUST be valid only after game-over.
+After game-over, the only valid instructions are **Close** and **Initialize** (new session on the same piñata). Close MUST be callable only by the game master. Rent MUST return to the game master (they paid it at Initialize). Close MUST be valid only after game-over. Close MUST be assembled by the arbiter as specified in [deployment.md](deployment.md) **DEP4**; the GM MUST NOT be assumed to hold vault ElGamal keys or the HP vault authority. Close MUST close this instance’s HP token account and MUST NOT close the shared HP mint (**DEP6**). Close MUST NOT pay the SOL pile or the reward (settlement is Attack-only, **D3**).

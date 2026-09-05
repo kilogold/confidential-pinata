@@ -1,6 +1,6 @@
 # Confidential Piñata
 
-A **glass piñata** on Solana: the reward is public; remaining HP is not. Players pay a fixed SOL fee to strike. The blow that takes HP to zero wins the locked token reward.
+A **glass piñata** on Solana: the reward is public; remaining HP is not. Players pay a fixed SOL fee to strike. Zero leftover HP is the kill: that blow wins the locked token reward. On chain the program pays when Attack bound-proves that leftover ([docs/program.md](docs/program.md) **D3**). The instruction can theoretically accept a last-HP burn without that proof; only a malicious or exploited arbiter can submit it ([docs/arbiter.md](docs/arbiter.md) **A7**). The arbiter is assumed trustworthy and MUST NOT assemble that Attack ([docs/arbiter.md](docs/arbiter.md) **A5**).
 
 This repo holds **conceptual design notes**. It is **not** an implemented program yet.
 

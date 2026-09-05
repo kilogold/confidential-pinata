@@ -15,9 +15,9 @@ Smash a **glass piñata**: you can see the prize, not how much HP is left. Sever
 - A registered player may Attack **without a cap** while the piñata is live
 - Strike SOL goes into **that piñata’s pile** — not the player prize
 - The prize is the **public token reward** (vault balance)
-- On the killing blow: game master gets the SOL pile; killer gets the reward. Kill is the Attack that carries a bound leftover-HP-zero proof ([program.md](program.md) **D3**). An omitted last-hit proof is arbiter censorship ([arbiter.md](arbiter.md) **A7**).
+- On the killing blow: game master gets the SOL pile; killer gets the reward. **Zero leftover HP is the kill/win.** The program pays only when that leftover is bound-proven on Attack ([program.md](program.md) **D3**). The Attack instruction can theoretically accept a last-HP burn without that proof ([arbiter.md](arbiter.md) **A7**); only a malicious or exploited arbiter can submit it. The arbiter is assumed trustworthy and MUST NOT assemble that Attack ([arbiter.md](arbiter.md) **A5**).
 - The game master’s **person id** cannot Attack. The game master MUST NOT read the arbiter ([arbiter.md](arbiter.md) **A6**). Enforcement is still open (**O1**).
-- After a kill: **Close** (GM only; rent back to the GM) or **Initialize** again (new session, same piñata)
+- After a kill: **Close** (GM signs an arbiter-built teardown; rent back to the GM) or **Initialize** again (new session, same piñata)
 
 ## Session loop
 
