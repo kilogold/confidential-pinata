@@ -1,42 +1,76 @@
 # Arbiter
 
-Off-chain webapp that prices the reward, draws HP, holds vault ElGamal keys, HP mint supply keys, and Token-2022 HP authorities, attaches confidential HP proofs, and hosts the Piñata program client. Deployment is in [deployment.md](deployment.md). On-chain rules live in [program.md](program.md).
+Off-chain webapp: prices the reward, draws HP, holds keys, attaches confidential HP proofs, hosts the Piñata program client.
 
-v1 does **not** add a second extra process. The **arbiter webapp is the arbiter** ([deployment.md](deployment.md) **DEP2**).
+The **arbiter webapp is the arbiter**. v1 does not add a second process (**DEP2**).
+
+Deployment: [deployment.md](deployment.md). On-chain: [program.md](program.md). Sequences: [flows.md](flows.md).
+
+RPC shapes, key-storage formats, and host configuration are unspecified here.
+
+```mermaid
+flowchart LR
+  subgraph backend [Backend — secrets stay here]
+    keys[Vault ElGamal<br/>Supply ElGamal/AES<br/>Mint authority<br/>Vault authority]
+    draw[HP draw + proofs]
+  end
+  subgraph frontend [Frontend]
+    ui[Wallet adapter]
+  end
+  ui --> backend
+  backend --> tx[Partial-signed txs]
+```
 
 ## Decided
 
-Normative language follows RFC 2119. These decisions apply to the v1 arbiter. They do not specify RPC shapes, key-storage formats, or host configuration.
+Normative language follows RFC 2119.
 
 ### A1. Topology
 
-The v1 arbiter MUST be the arbiter webapp described in [deployment.md](deployment.md) (frontend, backend, and Piñata program client as one participant), not a second extra process. That webapp is the primary client for GM and player wallets ([deployment.md](deployment.md) **DEP4**). Attack is not a player-only transaction: the arbiter MUST participate in every Attack that mutates confidential HP (proofs plus vault-authority signature). Close is not a GM-only-assembled transaction: the arbiter MUST construct Close, including the leftover-zero proof and vault-authority signature the confidential HP vault needs ([deployment.md](deployment.md) **DEP4**, **DEP6**). Vault ElGamal keys, HP mint supply keys, HP mint authority, and HP vault authority MUST live in the backend ([deployment.md](deployment.md) **DEP2**, **DEP5**, **DEP6**).
+The v1 arbiter MUST be the arbiter webapp (frontend, backend, and Piñata program client as one participant), not a second extra process. That webapp is the primary client for GM and player wallets (**DEP4**).
+
+| Flow | Arbiter MUST |
+| --- | --- |
+| Attack | Participate in every Attack that mutates confidential HP (proofs **plus** vault-authority signature). Not player-only. |
+| Close | Construct Close, including leftover-zero proof and vault-authority signature. Not GM-only-assembled. |
+| Keys | Vault ElGamal, HP mint supply keys, HP mint authority, and HP vault authority live in the **backend** (**DEP2**, **DEP5**, **DEP6**). |
 
 ### A2. Keys and HP plaintext
 
-These MUST live only in the arbiter webapp’s backend ([deployment.md](deployment.md) **DEP2**, **DEP5**, **DEP6**):
+These MUST live only in the backend:
 
-- HP vault ElGamal keys (account encryption for that instance’s HP vault; one token account per instance)
-- HP mint **supply** ElGamal keypair and supply AES key (`ConfidentialMintBurn` encrypted / decryptable supply for the **shared** HP mint; distinct from vault keys; one set for the mint)
-- HP mint authority
-- HP vault authority (Token-2022 signer for that instance’s HP token account; MAY be the same keypair as mint authority)
-- the HP draw and proof generation
+| Secret | Scope |
+| --- | --- |
+| HP vault ElGamal keys | Account encryption for **that instance’s** HP vault (one token account per instance) |
+| HP mint **supply** ElGamal keypair and supply AES | Shared mint `ConfidentialMintBurn` encrypted / decryptable supply. Distinct from vault keys. One set for the mint. |
+| HP mint authority | Token-2022 mint signer |
+| HP vault authority | Token-2022 signer for that instance’s HP token account. MAY be the same keypair as mint authority. |
+| HP draw and proof generation | Plaintext HP |
 
-A PDA MUST NOT hold vault ElGamal secrets, supply ElGamal or AES secrets, HP mint authority, or HP vault authority. After Initialize, those live keys MUST NOT remain on the game master’s workstation or in the frontend. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
+A PDA MUST NOT hold those secrets. After Initialize, those live keys MUST NOT remain on the GM workstation or in the frontend. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
 
 ### A3. Initialize: price, offset, mint
+
+```mermaid
+flowchart LR
+  p[Price reward in SOL<br/>A4] --> hp["HP = floor(reward_in_SOL / strike_fee_SOL) + offset"]
+  hp --> mint[ConfidentialMint into instance vault]
+  mint --> apply[ApplyPendingBalance — available]
+```
 
 At Initialize the arbiter MUST:
 
 1. Price the locked public reward in SOL (**A4**).
 2. Set \(\mathrm{HP} = \lfloor \mathrm{reward\_in\_SOL} / \mathrm{strike\_fee\_SOL} \rfloor + \mathrm{offset}\).
-3. Confidential-mint that HP into the instance HP vault on the shared HP mint (`ConfidentialMint`, CPI during Initialize) so that public deposit amounts and public mint supply do not reveal HP. `ConfidentialMint` credits the vault’s **pending** confidential balance. The Initialize transaction MUST `ApplyPendingBalance` immediately after that mint so the minted HP is **available** to burn ([flows.md](flows.md) **F1**). The arbiter MUST partial-sign that apply as HP vault authority ([deployment.md](deployment.md) **DEP6**). v1 MUST NOT PDA-sign it.
+3. Confidential-mint that HP into the instance HP vault on the shared HP mint (`ConfidentialMint`, CPI during Initialize) so public deposit amounts and public mint supply do not reveal HP. `ConfidentialMint` credits **pending**. The Initialize transaction MUST `ApplyPendingBalance` immediately after so minted HP is **available** ([flows.md](flows.md) **F1**). The arbiter MUST partial-sign that apply as HP vault authority (**DEP6**). v1 MUST NOT PDA-sign it.
 
 `offset` MUST be an integer \(\geq 0\) (zero is allowed). The closed interval from which `offset` is drawn MUST be known only to the arbiter. Resulting HP MUST be at least 1; Initialize MUST fail otherwise. The game master MUST NOT choose HP.
 
 ### A4. Jupiter price
 
-The arbiter MUST price the reward using Jupiter Tokens API v2 as documented at [verified.jup.ag/apis](https://verified.jup.ag/apis): `GET https://api.jup.ag/tokens/v2/search?query=<mint>`. It MUST read `usdPrice` for the reward mint and for wrapped SOL (`So11111111111111111111111111111111111111112`), and MUST compute
+Source: [verified.jup.ag/apis](https://verified.jup.ag/apis) — `GET https://api.jup.ag/tokens/v2/search?query=<mint>`.
+
+Read `usdPrice` for the reward mint and for wrapped SOL (`So11111111111111111111111111111111111111112`).
 
 \[
 \mathrm{reward\_in\_SOL} = (\mathrm{reward\_ui\_amount} \times \mathrm{reward\_usdPrice}) / \mathrm{sol\_usdPrice}
@@ -48,23 +82,41 @@ Participants MAY estimate a floor from public Jupiter quotes. They MUST NOT be a
 
 ### A5. Attack proofs
 
-The arbiter MUST attach the Token-2022 proofs that `ConfidentialBurn` requires for a homomorphic −1 on the HP vault, for every valid Attack, and MUST partial-sign that burn as HP vault authority ([deployment.md](deployment.md) **DEP6**). Attack MUST CPI that burn ([program.md](program.md) **D3**); v1 MUST NOT PDA-sign it. Immediately after that burn, the Attack sequence MUST include `ApplyPendingBurn` then `UpdateDecryptableSupply`; the arbiter MUST partial-sign both as HP mint authority ([deployment.md](deployment.md) **DEP5**). `ApplyPendingBurn` folds the **shared** mint’s `pending_burn` into encrypted supply and MUST NOT be treated as the HP decrement. `UpdateDecryptableSupply` refreshes the mint’s AES decryptable supply (`ApplyPendingBurn` does not). The public reward transfer on a kill MUST NOT require confidential reward proofs (see [program.md](program.md) **D3**).
+```mermaid
+flowchart TB
+  burn[ConfidentialBurn proofs for HP − 1]
+  burn --> z{"Remaining HP will be 0?"}
+  z -->|yes| zp[MUST include VerifyZeroCiphertext<br/>for post-burn vault blob]
+  z -->|no| nz[MUST NOT include that proof]
+  zp --> seq[CPI burn from Attack]
+  nz --> seq
+  seq --> supply[ApplyPendingBurn then UpdateDecryptableSupply]
+```
 
-When that debit leaves remaining HP at zero, the arbiter MUST include a `VerifyZeroCiphertext` proof for the **post-burn** HP vault `available_balance`: the ciphertext Token-2022 will write on the vault (homomorphic leftover), not a freshly encrypted zero. This is an **off-chain hard requirement**: the arbiter implementation MUST NOT assemble an Attack that burns the last HP without that proof. When remaining HP will not be zero, the arbiter MUST NOT include that proof. On-chain handling of presence versus absence, CPI verify, and byte-bind to the vault are [program.md](program.md) **D3**.
+| Step | Arbiter MUST |
+| --- | --- |
+| Burn | Attach Token-2022 proofs for homomorphic −1 on the HP vault. Partial-sign as **vault** authority (**DEP6**). Attack MUST CPI that burn (**D3**). MUST NOT PDA-sign it. |
+| Supply | Immediately after: `ApplyPendingBurn` then `UpdateDecryptableSupply`. Partial-sign both as **mint** authority (**DEP5**). These fold / refresh **shared-mint** supply. They are **not** the HP decrement. |
+| Kill proof | If leftover HP is 0: `VerifyZeroCiphertext` for the **post-burn** vault `available_balance` (the ciphertext Token-2022 will write — homomorphic leftover — not a fresh `Encrypt(0)`). MUST NOT assemble last-HP burn without that proof. If leftover will not be 0: MUST NOT include that proof. On-chain presence vs absence: **D3**. |
+| Reward | Public token transfer on a kill. No confidential reward proofs. |
+| Isolation | MUST NOT expose per-strike refusal to the GM. MUST NOT reveal HP draw, `offset`, or offset range while live. |
 
-A normal wallet signs the arbiter’s already-partial-signed bytes and cannot omit that proof by accident (signed-message integrity). Only a **malicious or exploited arbiter** can produce a last-HP burn with a valid signature set and no zero-proof. That is a deliberately accepted trust assumption, same class as exclusive key custody (**A2**). The arbiter is assumed trustworthy and secure.
-
-The arbiter MUST NOT expose per-strike refusal to the game master. The arbiter MUST NOT reveal the HP draw, `offset`, or the offset range while the instance is live.
+A normal wallet signs the arbiter’s already-partial-signed bytes and cannot omit the kill proof by accident (signed-message integrity). Only a **malicious or exploited arbiter** can produce a last-HP burn with a valid signature set and no zero-proof. That is a deliberately accepted trust assumption, same class as exclusive key custody (**A2**). The arbiter is assumed trustworthy and secure.
 
 ### A6. Game master isolation
 
-The game master MUST NOT read the arbiter webapp’s backend: no vault keys, no supply ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter ([deployment.md](deployment.md) **DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and can select a winner.
+The GM MUST NOT read the backend: no vault keys, no supply ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and can select a winner.
 
 ### A7. Liveness versus censorship
 
-Session liveness is arbiter uptime. A full stall (process down) is distinct from selective censorship (prove only a friend’s Attack). Isolation (**A6**) is intended to allow only the former.
+| Stall | Meaning |
+| --- | --- |
+| Full stall | Process down. Session liveness **is** arbiter uptime. |
+| Selective censorship | Prove only a friend’s Attack. Isolation (**A6**) is intended to allow only the former. |
 
-Attack is **vulnerable on chain** because the ZK ElGamal Proof Program does not document a leftover-nonzero / zero-exclusive-range instruction (`VerifyBatchedRangeProofU*` is `[0, 2ⁿ)`, which **includes 0**). The program therefore cannot reject a last-HP `ConfidentialBurn` that omits `VerifyZeroCiphertext`. If a **malicious or exploited arbiter** submitted that Attack, **D3** would keep the session live: leftover encrypt(0), no settlement, further burns fail (**D4** Close still waits on game-over). That is not a player vector: Attack is arbiter-assembled and already partial-signed (**F0**); a custom signer cannot rebuild it from an unsigned payload. Shifting a range to exclude 0 would be a homemade proof and is out of scope. v1 MUST NOT add that live-path check.
+Attack is **vulnerable on chain**: the ZK ElGamal Proof Program does not document a leftover-nonzero / zero-exclusive-range instruction (`VerifyBatchedRangeProofU*` is `[0, 2ⁿ)`, which **includes 0**). The program therefore cannot reject a last-HP `ConfidentialBurn` that omits `VerifyZeroCiphertext`. If a **malicious or exploited arbiter** submitted that Attack, **D3** would keep the session live: leftover encrypt(0), no settlement, further burns fail (**D4** Close still waits on game-over).
+
+That is not a player vector: Attack is arbiter-assembled and already partial-signed (**F0**); a custom signer cannot rebuild it from an unsigned payload. Shifting a range to exclude 0 would be a homemade proof and is out of scope. v1 MUST NOT add that live-path check.
 
 The **arbiter implementation MUST NOT take that path** (**A5**). Last-HP burn without a zero-proof is not a permitted arbiter behavior; exercising it is the accepted malicious-arbiter trust assumption, not an unclosed player grief.
 
