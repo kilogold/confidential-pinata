@@ -44,7 +44,7 @@ flowchart TB
 
 | Participant | Where | Role |
 | --- | --- | --- |
-| **GM wallet** | Client | Connects to the webapp. Completes Initialize and Close as fee payer; pays PDA rent. MUST NOT hold live vault ElGamal keys, HP mint supply keys, HP mint authority, or HP vault authority. |
+| **GM wallet** | Client | Connects to the webapp. Completes Initialize and Close as fee payer; pays PDA rent. MUST NOT hold live HP ElGamal or AES keys, HP mint authority, or HP vault authority. |
 | **Player wallet** | Client | Connects to the webapp. Signs Register and Attack. Pays the strike fee. |
 | **Arbiter webapp** | Off-chain (frontend, backend, and program client as **one** participant) | Primary client. Prices the reward, draws HP, holds keys in the backend, attaches HP proofs, partial-signs Token-2022 HP instructions, builds program transactions. |
 | **Piñata program** | Solana | Instructions and settlement. Not a user-facing client. |
@@ -87,7 +87,7 @@ A v1 deployment MUST include a GM wallet, one or more player wallets, one arbite
 
 ### DEP2. Arbiter is the webapp
 
-The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay and not a second named component. Vault ElGamal keys, vault AES, HP mint supply ElGamal and AES keys, the HP mint authority, and the HP vault authority MUST live in that webapp’s backend, not in the frontend, not in a PDA, and not on the GM wallet after Initialize. Those secrets MUST be reused (**A2**). v1 MUST keep them in a host-local env file readable by the arbiter backend.
+The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay and not a second named component. HP ElGamal and AES (vault and supply), the HP mint authority, and the HP vault authority MUST live in that webapp’s backend, not in the frontend, not in a PDA, and not on the GM wallet after Initialize. Those secrets MUST be reused (**A2**). v1 MUST keep the arbiter Solana authority keypair in a host-local env file readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair at runtime. They MUST NOT be stored as separate env values.
 
 ### DEP3. Isolation on the wire
 

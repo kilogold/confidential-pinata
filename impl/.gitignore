@@ -47,3 +47,6 @@ next-env.d.ts
 
 # solana local validator
 test-ledger/
+
+# sensitive files
+arbiter_keypair.json

@@ -11,7 +11,7 @@ RPC shapes and host configuration besides key storage (**A2**) are unspecified h
 ```mermaid
 flowchart LR
   subgraph backend [Backend — secrets stay here]
-    keys[Vault ElGamal<br/>Supply ElGamal/AES<br/>Mint authority<br/>Vault authority]
+    keys[HP ElGamal/AES<br/>Mint authority<br/>Vault authority]
     draw[HP draw + proofs]
   end
   subgraph frontend [Frontend]
@@ -33,7 +33,7 @@ The v1 arbiter MUST be the arbiter webapp (frontend, backend, and Piñata progra
 | --- | --- |
 | Attack | Participate in every Attack that mutates confidential HP (proofs **plus** vault-authority signature). Not player-only. |
 | Close | Construct Close, including leftover-zero proof and vault-authority signature. Not GM-only-assembled. |
-| Keys | Vault ElGamal, HP mint supply keys, HP mint authority, and HP vault authority live in the **backend** (**DEP2**, **DEP5**, **DEP6**). |
+| Keys | HP ElGamal and AES (vault and supply), HP mint authority, and HP vault authority live in the **backend** (**DEP2**, **DEP5**, **DEP6**). |
 
 ### A2. Keys and HP plaintext
 
@@ -41,15 +41,15 @@ These MUST live only in the backend:
 
 | Secret | Scope |
 | --- | --- |
-| HP vault ElGamal keys and vault AES | Account encryption and decryptable available balance for every instance HP vault. **Reused** across instances and sessions. Distinct from supply keys. |
-| HP mint **supply** ElGamal keypair and supply AES | Shared mint `ConfidentialMintBurn` encrypted / decryptable supply. Distinct from vault keys. One set for the mint. **Reused.** |
-| HP mint authority | Token-2022 mint signer. **Reused.** |
-| HP vault authority | Token-2022 signer for each instance’s HP token account. **Reused.** MAY be the same keypair as mint authority. |
+| HP ElGamal keypair | Encrypts every instance HP vault **and** the shared mint’s confidential supply. Token-2022 still has two slots (account vs mint); v1 MUST configure both with this same ElGamal pubkey. **Derived** at runtime from the arbiter Solana authority keypair (ZK SDK / Token-2022 signer derivation). **Reused** across instances and sessions. MUST NOT be generated per instance. MUST NOT be a separate env secret. |
+| HP AES key | Decryptable available balance on every instance vault **and** decryptable supply on the mint. **Derived** from the same authority keypair (SDK domain-separated from ElGamal). v1 MUST use that one AES for both slots. **Reused.** MUST NOT be generated per instance. MUST NOT be a separate env secret. |
+| HP mint authority | Token-2022 mint signer. **Reused.** Stored in env. |
+| HP vault authority | Token-2022 signer for each instance’s HP token account. **Reused.** MAY be the same keypair as mint authority. Simplest v1: that env keypair is both. |
 | HP draw and proof generation | Plaintext HP |
 
-The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. It MUST NOT generate a fresh vault ElGamal or vault AES key per instance or per session. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
+The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
 
-v1 MUST store those secrets in an env file that exists only on the arbiter host and is readable by the arbiter backend. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
+v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
 
 ### A3. Initialize: price, offset, mint
 
@@ -107,7 +107,7 @@ A normal wallet signs the arbiter’s already-partial-signed bytes and cannot om
 
 ### A6. Game master isolation
 
-The GM MUST NOT read the backend: no vault keys, no supply ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and can select a winner.
+The GM MUST NOT read the backend: no HP ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and can select a winner.
 
 ### A7. Liveness versus censorship
 

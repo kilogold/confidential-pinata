@@ -140,7 +140,7 @@ Normative language follows RFC 2119. **F0** applies to every flow. **F1** and **
 
 ### O1. Initialize wire details
 
-`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. Vault ElGamal, vault AES, supply ElGamal, supply AES, mint authority, and vault authority are reused (**A2**). Still unspecified: which ElGamal proof kinds are attached at Initialize; other dependent instructions besides that pair (for example account configure).
+`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize; other dependent instructions besides that pair (for example account configure).
 
 ### O2. Close wire details
 

@@ -10,9 +10,9 @@ npm run setup   # Builds the Anchor program and generates the TypeScript client
 npm run dev
 ```
 
-Copy [`.env.example`](.env.example) to `.env.local` and fill the arbiter backend keys before using Initialize / Attack / Close. Next.js loads that file from this directory (`impl/`), which is the project root for `app/`. Keep `.env.local` on the arbiter host only. Variables must not use a `NEXT_PUBLIC_` prefix.
+Copy [`.env.example`](.env.example) to `.env.local` and set `ARBITER_AUTHORITY_SECRET_KEY_BASE64` before using Initialize / Attack / Close. Next.js loads that file from this directory (`impl/`), which is the project root for `app/`. Keep `.env.local` on the arbiter host only. Variables must not use a `NEXT_PUBLIC_` prefix.
 
-Those secrets are [arbiter.md](../docs/arbiter.md) **A2** and [deployment.md](../docs/deployment.md) **DEP2**, **DEP5**, **DEP6**. They are reused for every instance and Initialize. v1 stores them in this host-local env file. That is not game-master isolation ([arbiter.md](../docs/arbiter.md) **O1**).
+That keypair is [arbiter.md](../docs/arbiter.md) **A2** and [deployment.md](../docs/deployment.md) **DEP2**, **DEP5**, **DEP6** (simplest v1: mint authority and vault authority). HP ElGamal and AES are derived from it at runtime. They are reused for every instance and Initialize. That is not game-master isolation ([arbiter.md](../docs/arbiter.md) **O1**).
 
 Open [http://localhost:3000](http://localhost:3000), connect your wallet, and use the Game Master / Player actions.
 
