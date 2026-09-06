@@ -52,4 +52,4 @@ Catalog and ownership: [docs/README.md](docs/README.md).
 | Price, HP formula, proofs, isolation | [arbiter.md](docs/arbiter.md) |
 | Initialize / Attack sequences (wallet adapter, partial-sign, send) | [flows.md](docs/flows.md) |
 
-Still unspecified (do not invent a v1 answer): SAS credential and person-id field; how GM isolation is enforced; optional HP mint auditor; Initialize proof kinds; Close Token-2022 wire details.
+Still unspecified (do not invent a v1 answer): SAS credential and person-id field; how GM isolation is enforced; optional HP mint auditor; Initialize proof kinds; Close Token-2022 wire details; how later versions bind HP Token-2022 ops to the Piñata program.

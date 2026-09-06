@@ -63,6 +63,8 @@ Normative language follows RFC 2119. These decisions apply to the on-chain progr
 
 The program MUST expose exactly four instructions: **Initialize**, **Register**, **Attack**, and **Close**. Each piñata is an independent instance with its own PDA set (**DEP1**). Every instruction MUST target one instance. All instances MUST use the same HP mint (**DEP6**).
 
+> **FUTURE (not v1).** v1 lets the arbiter modify HP out of band (Token-2022 signed by mint/vault authority, including sibling instructions and transactions that never invoke this program) to reduce the number of Piñata program instructions during early development. **D3** still requires Attack’s burn to be a CPI when Attack runs; that does not stop Token-2022 from accepting a burn with no Attack. Later versions MUST restrict HP modifications to the Piñata program and MUST forbid that out-of-band path ([deployment.md](deployment.md) **DEP6**, **O1**).
+
 ### D2. Hit points at Initialize
 
 The game master MUST NOT choose HP. HP at Initialize MUST be set by the arbiter (**A3**). Public deposit amounts and public mint supply MUST NOT reveal HP.

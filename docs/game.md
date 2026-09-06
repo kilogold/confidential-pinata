@@ -64,7 +64,7 @@ flowchart TB
 | Offset **including 0** | Offset 0 matches the arbiter’s break-even pile. Above 0 is extra SOL for the house. Extra SOL is **not** guaranteed every session. |
 | No public ceiling | Nobody (including the GM) knows when the next hit must kill. Public Jupiter quotes let people **guess** a floor; the arbiter’s quote and offset range are not published. |
 | Exact HP on the arbiter | Vault keys. An optional auditor may see the confidential mint amount; that is not how the GM is supposed to learn HP ([confidential-balances.md](confidential-balances.md)). |
-| At game-over | Strike count **is** realized initial HP. Remaining HP during play stays hidden from anyone who did not see the draw. |
+| At game-over | Strike count **is** realized initial HP **if** HP changed only via conforming Attacks (1 HP each). Out-of-band HP mutation ([deployment.md](deployment.md) **DEP6** FUTURE) breaks that. Remaining HP during play stays hidden from anyone who did not see the draw. |
 | Play reason | **GM reputation across sessions** (SAS person id is stable), not on-chain +EV. The jackpot is always visible. **Realized HP history is public.** Trash reward is public — skip it. |
 
 ## Decided

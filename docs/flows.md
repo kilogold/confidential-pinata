@@ -10,7 +10,7 @@ Instruction layouts, account metas, RPC shapes, and proof byte formats are out o
 
 1. Wallets MUST connect to the arbiter webapp with a Solana wallet adapter.
 2. The webapp MUST supply the transaction(s). Those transactions MUST already be assembled by the arbiter and MUST already be partial-signed by it before the wallet sees them. The connected wallet MUST sign as fee payer (GM pays Initialize rent and Close; player pays Attack, including the strike fee). Send MUST use that wallet’s own RPC, not a webapp-submitted send on their behalf. The wallet MUST NOT be given an unsigned Attack (or Initialize/Close) to assemble.
-3. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign (`ConfidentialBurn`, `ApplyPendingBalance`, vault close) = **DEP6**. Attack also requires burn proofs only the backend can produce; a player MUST NOT assemble a competing Attack from an unsigned payload.
+3. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign (`ConfidentialBurn`, `ApplyPendingBalance`, vault close) = **DEP6**. Attack also requires burn proofs only the backend can produce; a player MUST NOT assemble a competing Attack from an unsigned payload. `ApplyPendingBalance`, `ApplyPendingBurn`, and `UpdateDecryptableSupply` are sibling Token-2022 instructions in v1, not Piñata CPIs. That is the early-development grant; later versions wrap HP ops ([deployment.md](deployment.md) **DEP6** FUTURE).
 
 ## F1. Initialize
 

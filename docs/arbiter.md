@@ -49,7 +49,7 @@ These MUST live only in the backend:
 
 The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
 
-v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
+v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1** in this file): a game master with host access can still read the file.
 
 ### A3. Initialize: price, offset, mint
 
@@ -107,7 +107,7 @@ A normal wallet signs the arbiter’s already-partial-signed bytes and cannot om
 
 ### A6. Game master isolation
 
-The GM MUST NOT read the backend: no HP ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and can select a winner.
+The GM MUST NOT read the backend: no HP ElGamal or AES keys, no HP mint authority, no HP vault authority, no HP draw, no per-strike refuse. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1** (this file). If isolation fails, the house knows exact HP and can select a winner.
 
 ### A7. Liveness versus censorship
 
@@ -124,9 +124,11 @@ The **arbiter implementation MUST NOT take that path** (**A5**). Last-HP burn wi
 
 A failed `VerifyZeroCiphertext` CPI MUST NOT be treated as a live signal; it aborts the Attack (**D3**).
 
+> **FUTURE (not v1).** Omitting the kill proof on Attack is not the only arbiter HP bypass. Mint and vault authority also let the arbiter mint/burn/apply/close HP by calling Token-2022 with no Piñata instruction. v1 allows that to reduce the number of Piñata program instructions during early development. Later versions MUST forbid out-of-band HP modification ([deployment.md](deployment.md) **DEP6**, **O1** — not this file’s **O1**).
+
 ### A8. Deferred (not v1)
 
-A VRF for the HP offset is out of scope for v1.
+A VRF for the HP offset is out of scope for v1. Restricting HP Token-2022 mutations to the Piñata program is also later, not v1 ([deployment.md](deployment.md) **DEP6** FUTURE, **O1**).
 
 ## Still open
 

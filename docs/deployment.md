@@ -8,7 +8,7 @@ Jupiter Tokens API v2 (**A4**) is an **external dependency of the arbiter**, not
 
 ## Layout
 
-Wallets talk to the arbiter webapp. The Piñata program client lives **inside** that webapp. The GM wallet MUST NOT read the backend (policy; **A6**, **O1**).
+Wallets talk to the arbiter webapp. The Piñata program client lives **inside** that webapp. The GM wallet MUST NOT read the backend (policy; **A6**, [arbiter.md](arbiter.md) **O1**).
 
 ```mermaid
 flowchart TB
@@ -39,6 +39,8 @@ flowchart TB
 ```
 
 **Figure 1.** One shared HP mint. Each instance: PDA-addressed HP token account (arbiter **authority**). Reward vault and SOL pile stay program-controlled PDAs.
+
+> **FUTURE (not v1).** Later versions MUST restrict HP modifications to the Piñata program. Out-of-band HP modification by the arbiter MUST be forbidden: Token-2022 HP ops with no Piñata instruction in the transaction, and HP ops that are only sibling Token-2022 instructions (not Piñata CPIs). v1 allows both so the Piñata program can have fewer instructions during early development. Honest v1 already uses siblings (`ApplyPendingBalance` after Initialize; `ApplyPendingBurn` / `UpdateDecryptableSupply` after Attack). That is not a second, unnamed path — it is this grant. How later versions bind HP ops to the program is unspecified (**O1** in this file, not [arbiter.md](arbiter.md) **O1**).
 
 ## Participants
 
@@ -116,3 +118,11 @@ The HP mint authority MUST be a key held in the arbiter webapp backend. The back
 **Same key.** HP mint authority (**DEP5**) and HP vault authority MAY be the same arbiter keypair. Simplest v1 is one key.
 
 **Reward and SOL.** The public reward vault and the SOL pile MUST remain instance PDAs whose spending path is the Piñata program. They MUST NOT use the arbiter as token or SOL authority. The arbiter is assumed trustworthy and secure for exclusive HP generation and signing.
+
+> **FUTURE (not v1).** Because mint and vault authority are arbiter keys, Token-2022 will accept HP mint/burn/apply/close from the arbiter even when those instructions are **not** CPIs from Piñata — including a transaction that never invokes Piñata. v1 accepts that. Later versions MUST forbid that out-of-band path and MUST restrict HP modifications to the Piñata program. The v1 grant exists to reduce the number of Piñata program instructions during early development. Enforcement mechanism: **O1** (this file).
+
+## Still open
+
+### O1. Binding HP mutations to the program (later versions)
+
+This **O1** is not [arbiter.md](arbiter.md) **O1** (GM isolation). Later versions MUST restrict HP Token-2022 mutations to the Piñata program and MUST forbid arbiter out-of-band HP modification (note under **DEP6**). How that is enforced is unspecified: PDA vault/mint authority, extra wrapping instructions, or another bind. v1 does not choose.
