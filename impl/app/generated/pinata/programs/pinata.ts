@@ -23,17 +23,17 @@ import {
   type ParsedWithdrawInstruction,
 } from "../instructions";
 
-export const VAULT_PROGRAM_ADDRESS =
+export const PINATA_PROGRAM_ADDRESS =
   "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78" as Address<"BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78">;
 
-export enum VaultInstruction {
+export enum PinataInstruction {
   Deposit,
   Withdraw,
 }
 
-export function identifyVaultInstruction(
+export function identifyPinataInstruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
-): VaultInstruction {
+): PinataInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
   if (
     containsBytes(
@@ -44,7 +44,7 @@ export function identifyVaultInstruction(
       0,
     )
   ) {
-    return VaultInstruction.Deposit;
+    return PinataInstruction.Deposit;
   }
   if (
     containsBytes(
@@ -55,39 +55,39 @@ export function identifyVaultInstruction(
       0,
     )
   ) {
-    return VaultInstruction.Withdraw;
+    return PinataInstruction.Withdraw;
   }
   throw new Error(
-    "The provided instruction could not be identified as a vault instruction.",
+    "The provided instruction could not be identified as a pinata instruction.",
   );
 }
 
-export type ParsedVaultInstruction<
+export type ParsedPinataInstruction<
   TProgram extends string = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78",
 > =
   | ({
-      instructionType: VaultInstruction.Deposit;
+      instructionType: PinataInstruction.Deposit;
     } & ParsedDepositInstruction<TProgram>)
   | ({
-      instructionType: VaultInstruction.Withdraw;
+      instructionType: PinataInstruction.Withdraw;
     } & ParsedWithdrawInstruction<TProgram>);
 
-export function parseVaultInstruction<TProgram extends string>(
+export function parsePinataInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
-): ParsedVaultInstruction<TProgram> {
-  const instructionType = identifyVaultInstruction(instruction);
+): ParsedPinataInstruction<TProgram> {
+  const instructionType = identifyPinataInstruction(instruction);
   switch (instructionType) {
-    case VaultInstruction.Deposit: {
+    case PinataInstruction.Deposit: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: VaultInstruction.Deposit,
+        instructionType: PinataInstruction.Deposit,
         ...parseDepositInstruction(instruction),
       };
     }
-    case VaultInstruction.Withdraw: {
+    case PinataInstruction.Withdraw: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: VaultInstruction.Withdraw,
+        instructionType: PinataInstruction.Withdraw,
         ...parseWithdrawInstruction(instruction),
       };
     }

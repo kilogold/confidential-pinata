@@ -1,6 +1,8 @@
-# Anchor Vault Program
+# Anchor Pinata Program
 
-SOL vault program built with [Anchor](https://www.anchor-lang.com/). The program ID is in `declare_id!` in `programs/vault/src/lib.rs` and under `[programs.devnet]` in `Anchor.toml`.
+Pinata program (ASCII crate name `pinata`) built with [Anchor](https://www.anchor-lang.com/). The program ID is in `declare_id!` in `programs/pinata/src/lib.rs` and under `[programs.devnet]` in `Anchor.toml`.
+
+Design: [program.md](../../docs/program.md). This crate is leftover scaffold (deposit/withdraw), not the v1 instruction set yet.
 
 ## Deploy
 
@@ -22,11 +24,11 @@ cd ..
 npm run codama:js
 ```
 
-This updates the generated client in `app/generated/vault/`.
+This updates the generated client in `app/generated/pinata/`.
 
 ## Program Overview
 
-The vault program allows users to:
+The current scaffold allows users to:
 
 - **Deposit**: Send SOL to a personal vault PDA (Program Derived Address)
 - **Withdraw**: Retrieve all SOL from your vault

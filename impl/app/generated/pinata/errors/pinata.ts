@@ -12,33 +12,34 @@ import {
   type SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM,
   type SolanaError,
 } from "@solana/kit";
-import { VAULT_PROGRAM_ADDRESS } from "../programs";
+import { PINATA_PROGRAM_ADDRESS } from "../programs";
 
 /** VaultAlreadyExists: Vault already exists */
-export const VAULT_ERROR__VAULT_ALREADY_EXISTS = 0x1770; // 6000
+export const PINATA_ERROR__VAULT_ALREADY_EXISTS = 0x1770; // 6000
 /** InvalidAmount: Invalid amount */
-export const VAULT_ERROR__INVALID_AMOUNT = 0x1771; // 6001
+export const PINATA_ERROR__INVALID_AMOUNT = 0x1771; // 6001
 
-export type VaultError =
-  typeof VAULT_ERROR__INVALID_AMOUNT | typeof VAULT_ERROR__VAULT_ALREADY_EXISTS;
+export type PinataError =
+  | typeof PINATA_ERROR__INVALID_AMOUNT
+  | typeof PINATA_ERROR__VAULT_ALREADY_EXISTS;
 
-let vaultErrorMessages: Record<VaultError, string> | undefined;
+let pinataErrorMessages: Record<PinataError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
-  vaultErrorMessages = {
-    [VAULT_ERROR__INVALID_AMOUNT]: `Invalid amount`,
-    [VAULT_ERROR__VAULT_ALREADY_EXISTS]: `Vault already exists`,
+  pinataErrorMessages = {
+    [PINATA_ERROR__INVALID_AMOUNT]: `Invalid amount`,
+    [PINATA_ERROR__VAULT_ALREADY_EXISTS]: `Vault already exists`,
   };
 }
 
-export function getVaultErrorMessage(code: VaultError): string {
+export function getPinataErrorMessage(code: PinataError): string {
   if (process.env.NODE_ENV !== "production") {
-    return (vaultErrorMessages as Record<VaultError, string>)[code];
+    return (pinataErrorMessages as Record<PinataError, string>)[code];
   }
 
   return "Error message not available in production bundles.";
 }
 
-export function isVaultError<TProgramErrorCode extends VaultError>(
+export function isPinataError<TProgramErrorCode extends PinataError>(
   error: unknown,
   transactionMessage: {
     instructions: Record<number, { programAddress: Address }>;
@@ -49,7 +50,7 @@ export function isVaultError<TProgramErrorCode extends VaultError>(
   return isProgramError<TProgramErrorCode>(
     error,
     transactionMessage,
-    VAULT_PROGRAM_ADDRESS,
+    PINATA_PROGRAM_ADDRESS,
     code,
   );
 }

@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-vault = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78"
+pinata = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78"
 
 [provider]
 cluster = "devnet"

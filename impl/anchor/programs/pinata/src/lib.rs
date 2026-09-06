@@ -7,7 +7,7 @@ mod tests;
 declare_id!("BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78");
 
 #[program]
-pub mod vault {
+pub mod pinata {
     use super::*;
 
     pub fn deposit(ctx: Context<VaultAction>, amount: u64) -> Result<()> {

@@ -33,7 +33,7 @@ import {
   type WritableSignerAccount,
 } from "@solana/kit";
 import { findVaultPda } from "../pdas";
-import { VAULT_PROGRAM_ADDRESS } from "../programs";
+import { PINATA_PROGRAM_ADDRESS } from "../programs";
 import {
   expectAddress,
   getAccountMetaFactory,
@@ -49,7 +49,7 @@ export function getDepositDiscriminatorBytes() {
 }
 
 export type DepositInstruction<
-  TProgram extends string = typeof VAULT_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PINATA_PROGRAM_ADDRESS,
   TAccountSigner extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -122,7 +122,7 @@ export async function getDepositInstructionAsync<
   TAccountSigner extends string,
   TAccountVault extends string,
   TAccountSystemProgram extends string,
-  TProgramAddress extends Address = typeof VAULT_PROGRAM_ADDRESS,
+  TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: DepositAsyncInput<
     TAccountSigner,
@@ -139,7 +139,7 @@ export async function getDepositInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? VAULT_PROGRAM_ADDRESS;
+  const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -200,7 +200,7 @@ export function getDepositInstruction<
   TAccountSigner extends string,
   TAccountVault extends string,
   TAccountSystemProgram extends string,
-  TProgramAddress extends Address = typeof VAULT_PROGRAM_ADDRESS,
+  TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: DepositInput<TAccountSigner, TAccountVault, TAccountSystemProgram>,
   config?: { programAddress?: TProgramAddress },
@@ -211,7 +211,7 @@ export function getDepositInstruction<
   TAccountSystemProgram
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? VAULT_PROGRAM_ADDRESS;
+  const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -253,7 +253,7 @@ export function getDepositInstruction<
 }
 
 export type ParsedDepositInstruction<
-  TProgram extends string = typeof VAULT_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PINATA_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;

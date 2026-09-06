@@ -1,6 +1,6 @@
 # confidential-pinata
 
-Next.js app with Tailwind CSS, `@solana/kit`, and an Anchor vault program.
+Next.js app with Tailwind CSS, `@solana/kit`, and an Anchor pinata program.
 
 ## Getting Started
 
@@ -45,7 +45,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and in
 │   │   ├── theme-toggle.tsx     # Light/dark mode toggle
 │   │   ├── vault-card.tsx       # Vault deposit/withdraw UI
 │   │   └── wallet-button.tsx    # Wallet connect/disconnect dropdown
-│   ├── generated/vault/        # Codama-generated program client
+│   ├── generated/pinata/       # Codama-generated program client
 │   ├── lib/
 │   │   ├── wallet/             # Wallet-standard connection layer
 │   │   │   ├── types.ts        # Wallet types
@@ -62,7 +62,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and in
 │   │   └── explorer.ts         # Explorer URL builder + address helpers
 │   └── page.tsx                # Main page
 ├── anchor/                     # Anchor workspace
-│   └── programs/vault/         # Vault program (Rust)
+│   └── programs/pinata/        # Pinata program (Rust)
 └── codama.json                 # Codama client generation config
 ```
 
@@ -139,7 +139,7 @@ npm run anchor-build   # Build the program first
 npm run anchor-test    # Run tests
 ```
 
-The tests are in `anchor/programs/vault/src/tests.rs` and automatically use the program ID from `declare_id!`.
+The tests are in `anchor/programs/pinata/src/tests.rs` and automatically use the program ID from `declare_id!`.
 
 ## Regenerating the Client
 

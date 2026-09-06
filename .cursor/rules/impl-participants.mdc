@@ -6,20 +6,20 @@ alwaysApply: false
 
 # Impl participants
 
-`impl/` is the v1 implementation. Scaffold names (`vault`, deposit/withdraw) are leftover. Design names in [docs/](docs/) win.
+`impl/` is the v1 implementation. Deposit/withdraw UI is leftover scaffold. Design names in [docs/](docs/) win. Crate name is ASCII `pinata` (no `ñ`).
 
 | Code | Design participant | Read first |
 | --- | --- | --- |
 | `impl/app/` (React / Next.js, including `generated/`) | **Arbiter webapp** — frontend, backend, and Piñata program client as **one** participant (**A1**, **DEP2**, **DEP4**) | [arbiter.md](docs/arbiter.md), [deployment.md](docs/deployment.md), [flows.md](docs/flows.md) |
-| `impl/anchor/` (crate still named `vault`) | **Piñata program** — on-chain instructions and settlement, not a user-facing client | [program.md](docs/program.md), [deployment.md](docs/deployment.md) |
+| `impl/anchor/` (crate `pinata`) | **Piñata program** — on-chain instructions and settlement, not a user-facing client | [program.md](docs/program.md), [deployment.md](docs/deployment.md) |
 
 ```markdown
 # ❌ BAD
 The Next app is a generic wallet dapp. The Anchor program is a personal SOL vault.
 
 # ✅ GOOD
-impl/app is the arbiter webapp (it hosts the program client). impl/anchor is the
-Piñata program (Initialize, Register, Attack, Close — D1). `vault` is a scaffold name.
+impl/app is the arbiter webapp (it hosts the program client). impl/anchor crate
+`pinata` is the Piñata program (Initialize, Register, Attack, Close — D1).
 ```
 
 Do not implement deposit/withdraw-as-product. Do not split a second arbiter process. Point implementation notes at the owning `docs/*.md`; do not redefine **Decided**.

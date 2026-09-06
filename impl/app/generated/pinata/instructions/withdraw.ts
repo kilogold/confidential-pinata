@@ -31,7 +31,7 @@ import {
   type WritableSignerAccount,
 } from "@solana/kit";
 import { findVaultPda } from "../pdas";
-import { VAULT_PROGRAM_ADDRESS } from "../programs";
+import { PINATA_PROGRAM_ADDRESS } from "../programs";
 import {
   expectAddress,
   getAccountMetaFactory,
@@ -47,7 +47,7 @@ export function getWithdrawDiscriminatorBytes() {
 }
 
 export type WithdrawInstruction<
-  TProgram extends string = typeof VAULT_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PINATA_PROGRAM_ADDRESS,
   TAccountSigner extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -112,7 +112,7 @@ export async function getWithdrawInstructionAsync<
   TAccountSigner extends string,
   TAccountVault extends string,
   TAccountSystemProgram extends string,
-  TProgramAddress extends Address = typeof VAULT_PROGRAM_ADDRESS,
+  TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: WithdrawAsyncInput<
     TAccountSigner,
@@ -129,7 +129,7 @@ export async function getWithdrawInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? VAULT_PROGRAM_ADDRESS;
+  const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -184,7 +184,7 @@ export function getWithdrawInstruction<
   TAccountSigner extends string,
   TAccountVault extends string,
   TAccountSystemProgram extends string,
-  TProgramAddress extends Address = typeof VAULT_PROGRAM_ADDRESS,
+  TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: WithdrawInput<TAccountSigner, TAccountVault, TAccountSystemProgram>,
   config?: { programAddress?: TProgramAddress },
@@ -195,7 +195,7 @@ export function getWithdrawInstruction<
   TAccountSystemProgram
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? VAULT_PROGRAM_ADDRESS;
+  const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -232,7 +232,7 @@ export function getWithdrawInstruction<
 }
 
 export type ParsedWithdrawInstruction<
-  TProgram extends string = typeof VAULT_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PINATA_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
