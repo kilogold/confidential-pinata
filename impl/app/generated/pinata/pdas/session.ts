@@ -7,19 +7,19 @@
  */
 
 import {
-  getAddressEncoder,
   getBytesEncoder,
   getProgramDerivedAddress,
+  getUtf8Encoder,
   type Address,
   type ProgramDerivedAddress,
 } from "@solana/kit";
 
-export type VaultSeeds = {
-  signer: Address;
+export type SessionSeeds = {
+  sessionId: string;
 };
 
-export async function findVaultPda(
-  seeds: VaultSeeds,
+export async function findSessionPda(
+  seeds: SessionSeeds,
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
@@ -28,8 +28,10 @@ export async function findVaultPda(
   return await getProgramDerivedAddress({
     programAddress,
     seeds: [
-      getBytesEncoder().encode(new Uint8Array([118, 97, 117, 108, 116])),
-      getAddressEncoder().encode(seeds.signer),
+      getBytesEncoder().encode(
+        new Uint8Array([115, 101, 115, 115, 105, 111, 110]),
+      ),
+      getUtf8Encoder().encode(seeds.sessionId),
     ],
   });
 }

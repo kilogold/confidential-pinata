@@ -1,8 +1,18 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program::{transfer, Transfer};
+
+pub mod errors;
+pub mod instructions;
+pub mod seeds;
+pub mod state;
+mod token_cpi;
 
 #[cfg(test)]
 mod tests;
+
+pub use errors::*;
+pub use instructions::*;
+pub use seeds::*;
+pub use state::*;
 
 declare_id!("BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78");
 
@@ -10,66 +20,29 @@ declare_id!("BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78");
 pub mod pinata {
     use super::*;
 
-    pub fn deposit(ctx: Context<VaultAction>, amount: u64) -> Result<()> {
-        require!(ctx.accounts.vault.lamports() == 0, VaultError::VaultAlreadyExists);
-
-        let rent = Rent::get()?.minimum_balance(0);
-        require!(amount > rent, VaultError::InvalidAmount);
-
-        transfer(
-            CpiContext::new(
-                System::id(),
-                Transfer {
-                    from: ctx.accounts.signer.to_account_info(),
-                    to: ctx.accounts.vault.to_account_info(),
-                },
-            ),
-            amount,
-        )?;
-
-        Ok(())
+    pub fn initialize(
+        ctx: Context<Initialize>,
+        session_id: String,
+        strike_fee_lamports: u64,
+        reward_amount: u64,
+        decryptable_zero: [u8; 36],
+        new_decryptable_supply: [u8; 36],
+        mint_amount_auditor_ciphertext_lo: [u8; 64],
+        mint_amount_auditor_ciphertext_hi: [u8; 64],
+        expected_pending_balance_credit_counter: u64,
+        new_decryptable_available_balance: [u8; 36],
+    ) -> Result<()> {
+        instructions::initialize::handler(
+            ctx,
+            session_id,
+            strike_fee_lamports,
+            reward_amount,
+            decryptable_zero,
+            new_decryptable_supply,
+            mint_amount_auditor_ciphertext_lo,
+            mint_amount_auditor_ciphertext_hi,
+            expected_pending_balance_credit_counter,
+            new_decryptable_available_balance,
+        )
     }
-
-    pub fn withdraw(ctx: Context<VaultAction>) -> Result<()> {
-        require!(ctx.accounts.vault.lamports() > 0, VaultError::InvalidAmount);
-
-        let bump = ctx.bumps.vault;
-        let signer_key = ctx.accounts.signer.key();
-        let signer_seeds: &[&[&[u8]]] = &[&[b"vault", signer_key.as_ref(), &[bump]]];
-
-        transfer(
-            CpiContext::new_with_signer(
-                System::id(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.signer.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            ctx.accounts.vault.lamports(),
-        )?;
-
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct VaultAction<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    #[account(
-        mut,
-        seeds = [b"vault", signer.key().as_ref()],
-        bump,
-    )]
-    pub vault: SystemAccount<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[error_code]
-pub enum VaultError {
-    #[msg("Vault already exists")]
-    VaultAlreadyExists,
-    #[msg("Invalid amount")]
-    InvalidAmount,
 }

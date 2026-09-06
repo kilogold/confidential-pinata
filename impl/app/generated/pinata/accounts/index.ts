@@ -6,7 +6,4 @@
  * @see https://github.com/codama-idl/codama
  */
 
-export * from "./hpVault";
-export * from "./rewardVault";
 export * from "./session";
-export * from "./solPile";

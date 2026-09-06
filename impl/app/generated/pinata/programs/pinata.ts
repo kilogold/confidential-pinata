@@ -17,18 +17,39 @@ import {
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
-  parseDepositInstruction,
-  parseWithdrawInstruction,
-  type ParsedDepositInstruction,
-  type ParsedWithdrawInstruction,
+  parseInitializeInstruction,
+  type ParsedInitializeInstruction,
 } from "../instructions";
 
 export const PINATA_PROGRAM_ADDRESS =
   "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78" as Address<"BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78">;
 
+export enum PinataAccount {
+  Session,
+}
+
+export function identifyPinataAccount(
+  account: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
+): PinataAccount {
+  const data = "data" in account ? account.data : account;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([243, 81, 72, 115, 214, 188, 72, 144]),
+      ),
+      0,
+    )
+  ) {
+    return PinataAccount.Session;
+  }
+  throw new Error(
+    "The provided account could not be identified as a pinata account.",
+  );
+}
+
 export enum PinataInstruction {
-  Deposit,
-  Withdraw,
+  Initialize,
 }
 
 export function identifyPinataInstruction(
@@ -39,23 +60,12 @@ export function identifyPinataInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([242, 35, 198, 137, 82, 225, 242, 182]),
+        new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]),
       ),
       0,
     )
   ) {
-    return PinataInstruction.Deposit;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([183, 18, 70, 156, 148, 109, 161, 34]),
-      ),
-      0,
-    )
-  ) {
-    return PinataInstruction.Withdraw;
+    return PinataInstruction.Initialize;
   }
   throw new Error(
     "The provided instruction could not be identified as a pinata instruction.",
@@ -64,31 +74,20 @@ export function identifyPinataInstruction(
 
 export type ParsedPinataInstruction<
   TProgram extends string = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78",
-> =
-  | ({
-      instructionType: PinataInstruction.Deposit;
-    } & ParsedDepositInstruction<TProgram>)
-  | ({
-      instructionType: PinataInstruction.Withdraw;
-    } & ParsedWithdrawInstruction<TProgram>);
+> = {
+  instructionType: PinataInstruction.Initialize;
+} & ParsedInitializeInstruction<TProgram>;
 
 export function parsePinataInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPinataInstruction<TProgram> {
   const instructionType = identifyPinataInstruction(instruction);
   switch (instructionType) {
-    case PinataInstruction.Deposit: {
+    case PinataInstruction.Initialize: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PinataInstruction.Deposit,
-        ...parseDepositInstruction(instruction),
-      };
-    }
-    case PinataInstruction.Withdraw: {
-      assertIsInstructionWithAccounts(instruction);
-      return {
-        instructionType: PinataInstruction.Withdraw,
-        ...parseWithdrawInstruction(instruction),
+        instructionType: PinataInstruction.Initialize,
+        ...parseInitializeInstruction(instruction),
       };
     }
     default:

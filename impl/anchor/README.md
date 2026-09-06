@@ -2,7 +2,7 @@
 
 Pinata program (ASCII crate name `pinata`) built with [Anchor](https://www.anchor-lang.com/). The program ID is in `declare_id!` in `programs/pinata/src/lib.rs` and under `[programs.devnet]` in `Anchor.toml`.
 
-Design: [program.md](../../docs/program.md). This crate is leftover scaffold (deposit/withdraw), not the v1 instruction set yet.
+Design: [program.md](../../docs/program.md). This crate implements **Initialize** (F1). Register, Attack, and Close are not in this crate yet.
 
 ## Deploy
 
@@ -26,19 +26,24 @@ npm run codama:js
 
 This updates the generated client in `app/generated/pinata/`.
 
-## Program Overview
+## Initialize
 
-The current scaffold allows users to:
+`initialize` starts a session (or a new session after Game Over on the same PDAs). The caller is the GM. The arbiter must sign as HP mint authority. Instruction layouts live in the program; they are still open in the design docs.
 
-- **Deposit**: Send SOL to a personal vault PDA (Program Derived Address)
-- **Withdraw**: Retrieve all SOL from your vault
+PDA seeds (UTF-8 `session_id`, max 24 bytes):
 
-Each user gets their own vault derived from their wallet address.
+- `["session", session_id]`
+- `["hp_vault", session_id]`
+- `["reward_vault", session_id]`
+- `["sol_pile", session_id]`
+
+Initialize CPIs `ConfidentialMint` then `ApplyPendingBalance`. The arbiter signs as HP mint authority and HP vault authority (not a PDA). `ApplyPendingBalance` takes the arbiter-supplied decryptable available balance (vault AES) so minted HP is spendable.
 
 ## Testing
 
-Run the Anchor tests:
+Tests use [LiteSVM](https://github.com/LiteSVM/litesvm). They cover Initialize gates (session_id, live already-exists, Game Over empty pots / zero-proof, arbiter signer, amounts). Confidential mint happy path needs a ZK-enabled runtime and is not in this suite.
 
 ```bash
+# from impl/anchor (Anchor.toml scripts.test = cargo test)
 anchor test --skip-deploy
 ```
