@@ -6,7 +6,7 @@ The **arbiter webapp is the arbiter**. v1 does not add a second process (**DEP2*
 
 Deployment: [deployment.md](deployment.md). On-chain: [program.md](program.md). Sequences: [flows.md](flows.md).
 
-RPC shapes, key-storage formats, and host configuration are unspecified here.
+RPC shapes and host configuration besides key storage (**A2**) are unspecified here.
 
 ```mermaid
 flowchart LR
@@ -41,13 +41,15 @@ These MUST live only in the backend:
 
 | Secret | Scope |
 | --- | --- |
-| HP vault ElGamal keys | Account encryption for **that instance’s** HP vault (one token account per instance) |
-| HP mint **supply** ElGamal keypair and supply AES | Shared mint `ConfidentialMintBurn` encrypted / decryptable supply. Distinct from vault keys. One set for the mint. |
-| HP mint authority | Token-2022 mint signer |
-| HP vault authority | Token-2022 signer for that instance’s HP token account. MAY be the same keypair as mint authority. |
+| HP vault ElGamal keys and vault AES | Account encryption and decryptable available balance for every instance HP vault. **Reused** across instances and sessions. Distinct from supply keys. |
+| HP mint **supply** ElGamal keypair and supply AES | Shared mint `ConfidentialMintBurn` encrypted / decryptable supply. Distinct from vault keys. One set for the mint. **Reused.** |
+| HP mint authority | Token-2022 mint signer. **Reused.** |
+| HP vault authority | Token-2022 signer for each instance’s HP token account. **Reused.** MAY be the same keypair as mint authority. |
 | HP draw and proof generation | Plaintext HP |
 
-A PDA MUST NOT hold those secrets. After Initialize, those live keys MUST NOT remain on the GM workstation or in the frontend. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
+The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. It MUST NOT generate a fresh vault ElGamal or vault AES key per instance or per session. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
+
+v1 MUST store those secrets in an env file that exists only on the arbiter host and is readable by the arbiter backend. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
 
 ### A3. Initialize: price, offset, mint
 

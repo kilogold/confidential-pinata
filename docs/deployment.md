@@ -2,7 +2,7 @@
 
 Who runs what, and where instance state lives. Behavior: [program.md](program.md), [arbiter.md](arbiter.md). Sequences: [flows.md](flows.md).
 
-Frontend vs backend process split, hosting, and RPC shapes are unspecified.
+Frontend vs backend process split, hosting, and RPC shapes are unspecified. v1 key storage is [arbiter.md](arbiter.md) **A2**.
 
 Jupiter Tokens API v2 (**A4**) is an **external dependency of the arbiter**, not a fifth deployed component.
 
@@ -87,7 +87,7 @@ A v1 deployment MUST include a GM wallet, one or more player wallets, one arbite
 
 ### DEP2. Arbiter is the webapp
 
-The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay and not a second named component. Vault ElGamal keys, HP mint supply ElGamal and AES keys, the HP mint authority, and the HP vault authority MUST live in that webapp’s backend, not in the frontend, not in a PDA, and not on the GM wallet after Initialize.
+The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay and not a second named component. Vault ElGamal keys, vault AES, HP mint supply ElGamal and AES keys, the HP mint authority, and the HP vault authority MUST live in that webapp’s backend, not in the frontend, not in a PDA, and not on the GM wallet after Initialize. Those secrets MUST be reused (**A2**). v1 MUST keep them in a host-local env file readable by the arbiter backend.
 
 ### DEP3. Isolation on the wire
 

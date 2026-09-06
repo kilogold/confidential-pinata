@@ -10,14 +10,17 @@ npm run setup   # Builds the Anchor program and generates the TypeScript client
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), connect your wallet, and interact with the vault.
+Copy [`.env.example`](.env.example) to `.env.local` and fill the arbiter backend keys before using Initialize / Attack / Close. Next.js loads that file from this directory (`impl/`), which is the project root for `app/`. Keep `.env.local` on the arbiter host only. Variables must not use a `NEXT_PUBLIC_` prefix.
+
+Those secrets are [arbiter.md](../docs/arbiter.md) **A2** and [deployment.md](../docs/deployment.md) **DEP2**, **DEP5**, **DEP6**. They are reused for every instance and Initialize. v1 stores them in this host-local env file. That is not game-master isolation ([arbiter.md](../docs/arbiter.md) **O1**).
+
+Open [http://localhost:3000](http://localhost:3000), connect your wallet, and use the Game Master / Player actions.
 
 ## What's Included
 
+- **Landing** — Game Master (Init, Close) and Player (Register, Strike) actions
 - **Wallet connection** via wallet-standard with auto-discovery and dropdown UI
 - **Cluster switching** — devnet, testnet, mainnet, and localnet from the header
-- **Wallet balance** display with airdrop button (devnet/testnet/localnet)
-- **SOL Vault program** — deposit and withdraw SOL from a personal PDA vault
 - **Toast notifications** with explorer links for every transaction
 - **Error handling** — human-readable messages for common Solana and program errors
 - **Codama-generated client** — type-safe program interactions using `@solana/kit`
@@ -40,10 +43,9 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and in
 │   ├── components/
 │   │   ├── cluster-context.tsx  # Cluster state (React context + localStorage)
 │   │   ├── cluster-select.tsx   # Cluster switcher dropdown
-│   │   ├── grid-background.tsx  # Solana-branded decorative grid
 │   │   ├── providers.tsx        # Wallet + theme providers
+│   │   ├── role-section.tsx     # Game Master / Player action groups
 │   │   ├── theme-toggle.tsx     # Light/dark mode toggle
-│   │   ├── vault-card.tsx       # Vault deposit/withdraw UI
 │   │   └── wallet-button.tsx    # Wallet connect/disconnect dropdown
 │   ├── generated/pinata/       # Codama-generated program client
 │   ├── lib/

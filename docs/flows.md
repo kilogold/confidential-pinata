@@ -140,7 +140,7 @@ Normative language follows RFC 2119. **F0** applies to every flow. **F1** and **
 
 ### O1. Initialize wire details
 
-`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. Still unspecified: which ElGamal proof kinds are attached at Initialize; other dependent instructions besides that pair (for example account configure); whether vault ElGamal keys are generated per session or reused on a later Initialize of the same piñata. Supply ElGamal and AES keys are mint-lifetime (**DEP6**), not per session.
+`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. Vault ElGamal, vault AES, supply ElGamal, supply AES, mint authority, and vault authority are reused (**A2**). Still unspecified: which ElGamal proof kinds are attached at Initialize; other dependent instructions besides that pair (for example account configure).
 
 ### O2. Close wire details
 
