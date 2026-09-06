@@ -17,9 +17,6 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
-# Compile programs/pinata/src/tests.rs (LiteSVM 0.10 / solana-sdk). Off until rewrite.
-legacy-litesvm-tests = []
-
 [dependencies]
 anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
 anchor-spl = "1.1.2"
@@ -34,11 +31,16 @@ spl-token-2022-interface = "3"
 litesvm = "0.16.0"
 # LiteSVM 0.16 does not re-export these; tests must take them from here, not solana-sdk.
 solana-account = "4.3"
+solana-compute-budget-interface = "~3.0.0"
 solana-hash = "~4.5.0"
 solana-keypair = "3.1.2"
 solana-message = "4.2.4"
 solana-signer = "3.0.1"
+solana-system-interface = { version = "3.2.0", features = ["bincode"] }
 solana-transaction = { version = "4.1.5", features = ["verify"] }
+# Match Agave 4.2 / LiteSVM builtin verifier (not zk-sdk 7).
+solana-zk-sdk = "=5.0.1"
+curve25519-dalek = "4"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

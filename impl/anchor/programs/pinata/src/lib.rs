@@ -6,9 +6,7 @@ pub mod seeds;
 pub mod state;
 mod token_cpi;
 
-// tests.rs still targets LiteSVM 0.10 + solana-sdk. Keep the file; do not compile
-// it until the test rewrite. IDL build compiles the lib-test target.
-#[cfg(all(test, feature = "legacy-litesvm-tests"))]
+#[cfg(test)]
 mod tests;
 
 pub use errors::*;
@@ -46,13 +44,5 @@ pub mod pinata {
             expected_pending_balance_credit_counter,
             new_decryptable_available_balance,
         )
-    }
-}
-
-#[cfg(test)]
-mod litesvm_link {
-    #[test]
-    fn constructs() {
-        let _ = litesvm::LiteSVM::new();
     }
 }

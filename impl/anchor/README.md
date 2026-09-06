@@ -41,7 +41,7 @@ Initialize CPIs `ConfidentialMint` then `ApplyPendingBalance`. The arbiter signs
 
 ## Testing
 
-Tests use [LiteSVM](https://github.com/LiteSVM/litesvm). They cover Initialize gates (session_id, live already-exists, Game Over empty pots / zero-proof, arbiter signer, amounts). Confidential mint happy path needs a ZK-enabled runtime and is not in this suite.
+Tests use [LiteSVM](https://github.com/LiteSVM/litesvm) 0.16 with the dumped Token-2022 program and the builtin ZK ElGamal verifier. They cover Initialize gates and a confidential-mint happy path (proofs verified into context accounts, then Initialize).
 
 ```bash
 # from impl/anchor (Anchor.toml scripts.test = cargo test)
