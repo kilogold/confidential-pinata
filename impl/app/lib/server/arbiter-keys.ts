@@ -1,10 +1,16 @@
+import { hkdfSync } from "node:crypto";
+import { ed25519 } from "@noble/curves/ed25519";
+import { bytesToNumberLE, numberToBytesLE } from "@noble/curves/utils";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
   type KeyPairSigner,
 } from "@solana/kit";
-import { AeKey, ElGamalKeypair } from "@solana/zk-sdk/node";
-import { HP_KEY_PUBLIC_SEED } from "@/app/lib/constants";
+import { AeKey, ElGamalKeypair, ElGamalSecretKey } from "@solana/zk-sdk/node";
+import {
+  CONFIDENTIAL_HKDF_SALT,
+  HP_KEY_PUBLIC_SEED,
+} from "@/app/lib/constants";
 
 export type ArbiterKeys = {
   signer: KeyPairSigner;
@@ -12,7 +18,7 @@ export type ArbiterKeys = {
   aes: AeKey;
 };
 
-async function signSeed(
+async function signMessage(
   signer: KeyPairSigner,
   message: Uint8Array
 ): Promise<Uint8Array> {
@@ -26,21 +32,40 @@ async function signSeed(
   return new Uint8Array(signature);
 }
 
+function keysFromSignature(signature: Uint8Array): {
+  elgamal: ElGamalKeypair;
+  aes: AeKey;
+} {
+  const salt = Buffer.from(CONFIDENTIAL_HKDF_SALT);
+  const aeBytes = new Uint8Array(
+    hkdfSync("sha512", signature, salt, Buffer.from("ae"), 16)
+  );
+  const elgamalWide = new Uint8Array(
+    hkdfSync("sha512", signature, salt, Buffer.from("elgamal"), 64)
+  );
+  const scalar = bytesToNumberLE(elgamalWide) % ed25519.Point.CURVE().n;
+  return {
+    elgamal: ElGamalKeypair.fromSecretKey(
+      ElGamalSecretKey.fromBytes(numberToBytesLE(scalar, 32))
+    ),
+    aes: AeKey.fromBytes(aeBytes),
+  };
+}
+
+/**
+ * Wallet-level confidential keys: sign `solana-conf-bal/v1` || public seed
+ * (A2 empty seed) once, then HKDF-SHA512. Matches `spl-token`
+ * `derive_confidential_keys(signer, b"")`.
+ */
 export async function deriveArbiterKeys(
   secretKey: Uint8Array
 ): Promise<ArbiterKeys> {
   const signer = await createKeyPairSignerFromBytes(secretKey);
-  const elgamalSig = await signSeed(
-    signer,
-    ElGamalKeypair.signerMessage(HP_KEY_PUBLIC_SEED)
+  const message = new Uint8Array(
+    CONFIDENTIAL_HKDF_SALT.length + HP_KEY_PUBLIC_SEED.length
   );
-  const aesSig = await signSeed(
-    signer,
-    AeKey.signerMessage(HP_KEY_PUBLIC_SEED)
-  );
-  return {
-    signer,
-    elgamal: ElGamalKeypair.fromSignature(elgamalSig),
-    aes: AeKey.fromSignature(aesSig),
-  };
+  message.set(CONFIDENTIAL_HKDF_SALT, 0);
+  message.set(HP_KEY_PUBLIC_SEED, CONFIDENTIAL_HKDF_SALT.length);
+  const { elgamal, aes } = keysFromSignature(await signMessage(signer, message));
+  return { signer, elgamal, aes };
 }

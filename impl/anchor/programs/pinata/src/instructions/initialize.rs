@@ -217,8 +217,7 @@ pub struct Initialize<'info> {
     /// CHECK: Pre-verified ZeroCiphertext context; required on Game Over re-init.
     pub zero_proof: Option<UncheckedAccount<'info>>,
 
-    /// CHECK: Token-2022 program. Address-constrained so LiteSVM gate tests can
-    /// pass a non-executable dummy; production txs still pass the real program.
+    /// CHECK: Token-2022 program.
     #[account(address = spl_token_2022_interface::id())]
     pub token_2022_program: UncheckedAccount<'info>,
     /// CHECK: SPL Token or Token-2022.

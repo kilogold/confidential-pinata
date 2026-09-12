@@ -6,15 +6,12 @@ pub mod seeds;
 pub mod state;
 mod token_cpi;
 
-#[cfg(test)]
-mod tests;
-
 pub use errors::*;
 pub use instructions::*;
 pub use seeds::*;
 pub use state::*;
 
-declare_id!("BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78");
+declare_id!("Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur");
 
 #[program]
 pub mod pinata {

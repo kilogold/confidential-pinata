@@ -1,6 +1,6 @@
 # Anchor Pinata Program
 
-Pinata program (ASCII crate name `pinata`) built with [Anchor](https://www.anchor-lang.com/). The program ID is in `declare_id!` in `programs/pinata/src/lib.rs` and under `[programs.devnet]` in `Anchor.toml`.
+Pinata program (ASCII crate name `pinata`) built with [Anchor](https://www.anchor-lang.com/). The program ID is in `declare_id!` in `programs/pinata/src/lib.rs` and under `[programs.localnet]` / `[programs.devnet]` in `Anchor.toml`.
 
 Design: [program.md](../../docs/program.md). This crate implements **Initialize** (F1). Register, Attack, and Close are not in this crate yet.
 
@@ -41,9 +41,11 @@ Initialize CPIs `ConfidentialMint` then `ApplyPendingBalance`. The arbiter signs
 
 ## Testing
 
-Tests use [LiteSVM](https://github.com/LiteSVM/litesvm) 0.16 with the dumped Token-2022 program and the builtin ZK ElGamal verifier. They cover Initialize gates and a confidential-mint happy path (proofs verified into context accounts, then Initialize).
+`anchor test` starts Surfpool as a Devnet fork (`[surfpool] online = true`), deploys this program, and runs `tests/initialize.test.ts`: one GM Initialize happy path against Token-2022, the ZK ElGamal proof program, and the shared HP mint.
 
 ```bash
-# from impl/anchor (Anchor.toml scripts.test = cargo test)
-anchor test --skip-deploy
+# from impl/anchor
+anchor test
 ```
+
+Requires `../.env.local` with `ARBITER_AUTHORITY_SECRET_KEY_BASE64` and `HP_MINT`. Deploy to real Devnet is still `anchor deploy --provider.cluster devnet`.

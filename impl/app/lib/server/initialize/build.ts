@@ -106,11 +106,15 @@ export async function buildPartialInitializeTransaction(args: {
       .send();
     if (sim.value.err) {
       const logs = sim.value.logs?.join("\n") ?? "";
+      const errDetail =
+        typeof sim.value.err === "string"
+          ? sim.value.err
+          : JSON.stringify(sim.value.err);
       throw new InitializeApiError(
         "SIMULATION_FAILED",
         logs.length > 0
-          ? `Initialize simulation failed: ${logs.slice(-500)}`
-          : "Initialize simulation failed",
+          ? `Initialize simulation failed (${errDetail}): ${logs.slice(-500)}`
+          : `Initialize simulation failed: ${errDetail}`,
         { status: 400 }
       );
     }

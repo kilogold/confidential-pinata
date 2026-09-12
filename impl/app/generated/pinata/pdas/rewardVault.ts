@@ -23,7 +23,7 @@ export async function findRewardVaultPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78" as Address<"BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78">,
+    programAddress = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

@@ -215,7 +215,9 @@ export async function orchestrateInitialize(
     if (err instanceof InitializeApiError) throw err;
     throw new InitializeApiError(
       "PROOF_SETUP_FAILED",
-      "Could not generate or submit mint proofs",
+      err instanceof Error
+        ? err.message
+        : "Could not generate or submit mint proofs",
       { status: 502 }
     );
   }

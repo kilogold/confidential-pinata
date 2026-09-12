@@ -243,7 +243,6 @@ export type InitializeAsyncInput<
   rangeProof: Address<TAccountRangeProof>;
   pubkeyValidityProof?: Address<TAccountPubkeyValidityProof>;
   zeroProof?: Address<TAccountZeroProof>;
-  /** pass a non-executable dummy; production txs still pass the real program. */
   token2022Program?: Address<TAccountToken2022Program>;
   rewardTokenProgram: Address<TAccountRewardTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -473,7 +472,6 @@ export type InitializeInput<
   rangeProof: Address<TAccountRangeProof>;
   pubkeyValidityProof?: Address<TAccountPubkeyValidityProof>;
   zeroProof?: Address<TAccountZeroProof>;
-  /** pass a non-executable dummy; production txs still pass the real program. */
   token2022Program?: Address<TAccountToken2022Program>;
   rewardTokenProgram: Address<TAccountRewardTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -668,7 +666,6 @@ export type ParsedInitializeInstruction<
     rangeProof: TAccountMetas[11];
     pubkeyValidityProof?: TAccountMetas[12] | undefined;
     zeroProof?: TAccountMetas[13] | undefined;
-    /** pass a non-executable dummy; production txs still pass the real program. */
     token2022Program: TAccountMetas[14];
     rewardTokenProgram: TAccountMetas[15];
     systemProgram: TAccountMetas[16];

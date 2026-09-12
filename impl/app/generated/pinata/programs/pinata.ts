@@ -22,7 +22,7 @@ import {
 } from "../instructions";
 
 export const PINATA_PROGRAM_ADDRESS =
-  "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78" as Address<"BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78">;
+  "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">;
 
 export enum PinataAccount {
   Session,
@@ -73,7 +73,7 @@ export function identifyPinataInstruction(
 }
 
 export type ParsedPinataInstruction<
-  TProgram extends string = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78",
+  TProgram extends string = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur",
 > = {
   instructionType: PinataInstruction.Initialize;
 } & ParsedInitializeInstruction<TProgram>;

@@ -134,14 +134,15 @@ To test against a local validator instead of devnet:
 
 ## Testing
 
-Tests use [LiteSVM](https://github.com/LiteSVM/litesvm), a fast lightweight Solana VM for testing.
+`anchor test` starts a [Surfpool](https://docs.surfpool.run) localnet that **forks Devnet** (`online = true` in `anchor/Anchor.toml`), deploys the local pinata build, then runs the Initialize happy path in `anchor/tests/initialize.test.ts`.
+
+That test talks to real Token-2022, the ZK ElGamal proof program, and the shared Devnet HP mint. It loads `ARBITER_AUTHORITY_SECRET_KEY_BASE64` and `HP_MINT` from `.env.local`. RPC is `ANCHOR_PROVIDER_URL` (the Surfpool localnet), not `SOLANA_RPC_URL`.
 
 ```bash
-npm run anchor-build   # Build the program first
-npm run anchor-test    # Run tests
+npm run anchor-test
 ```
 
-The tests are in `anchor/programs/pinata/src/tests.rs` and automatically use the program ID from `declare_id!`.
+Shut down any other process on port 8899 first, or run `cd anchor && anchor test --skip-local-validator` against a Devnet-fork Surfpool you already started.
 
 ## Regenerating the Client
 

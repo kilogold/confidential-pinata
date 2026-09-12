@@ -13,6 +13,10 @@ import {
 import { InitializeApiError } from "./errors";
 import type { SolanaRpc } from "../rpc";
 
+/** Max `getSignatureStatuses` polls before giving up (~16s with interval). */
+const CONFIRM_POLL_ATTEMPTS = 40;
+const CONFIRM_POLL_INTERVAL_MS = 400;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -76,8 +80,19 @@ export async function sendAndConfirmInstructions(
   }
 
   const sig = getSignatureFromTransaction(signed);
-  for (let i = 0; i < 40; i += 1) {
-    const { value } = await rpc.getSignatureStatuses([sig]).send();
+  for (let i = 0; i < CONFIRM_POLL_ATTEMPTS; i += 1) {
+    let value;
+    try {
+      ({ value } = await rpc.getSignatureStatuses([sig]).send());
+    } catch (err) {
+      throw new InitializeApiError(
+        "RPC_UNAVAILABLE",
+        err instanceof Error
+          ? err.message
+          : "Could not poll proof-setup confirmation",
+        { status: 502 }
+      );
+    }
     const status = value[0];
     if (status?.err) {
       throw new InitializeApiError(
@@ -92,7 +107,7 @@ export async function sendAndConfirmInstructions(
     ) {
       return signature;
     }
-    await sleep(400);
+    await sleep(CONFIRM_POLL_INTERVAL_MS);
   }
 
   throw new InitializeApiError(

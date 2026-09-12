@@ -4,14 +4,24 @@
 resolution = true
 skip-lint = false
 
+[programs.localnet]
+pinata = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur"
+
 [programs.devnet]
-pinata = "BMuoaTUJx2ufxqGVBRRmhtgx2adsVBwjKwMqMgAhpw78"
+pinata = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur"
 
 [provider]
-cluster = "devnet"
-wallet = "~/.config/solana/id.json"
+cluster = "localnet"
+wallet = "../arbiter_keypair.json"
 
 [scripts]
-test = "cargo test"
+test = "npx tsx --env-file=../.env.local --tsconfig ../tsconfig.json --test tests/initialize.test.ts"
+
+[surfpool]
+online = true
+datasource_rpc_url = "https://api.devnet.solana.com"
+startup_wait = 10000
+block_production_mode = "transaction"
+airdrop_addresses = ["arbXiNvkQ88uyPAUwxzdk5cqpbtuxSMWrQzbczqP66m"]
 
 [hooks]

@@ -153,10 +153,12 @@ function requireExtension<K extends Extension["__kind"]>(
 function proofOrThrow<T>(label: string, fn: () => T): T {
   try {
     return fn();
-  } catch {
+  } catch (err) {
     throw new InitializeApiError(
       "PROOF_SETUP_FAILED",
-      `Could not generate the ${label} proof`,
+      err instanceof Error
+        ? `Could not generate the ${label} proof: ${err.message}`
+        : `Could not generate the ${label} proof`,
       { status: 500 }
     );
   }
