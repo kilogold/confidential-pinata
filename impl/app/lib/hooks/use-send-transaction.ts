@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { useSWRConfig } from "swr";
-import type { Instruction } from "@solana/kit";
-import { createClient } from "@solana/kit-client-rpc";
+import { createClient, type Instruction } from "@solana/kit";
+import { solanaRpc } from "@solana/kit-plugin-rpc";
+import { payer } from "@solana/kit-plugin-signer";
 import { useWallet } from "../wallet/context";
 import { useCluster } from "../../components/cluster-context";
 import { getClusterUrl, getClusterWsConfig } from "../solana-client";
@@ -14,17 +15,20 @@ export function useSendTransaction() {
   const { mutate } = useSWRConfig();
   const [isSending, setIsSending] = useState(false);
 
-  const txClient = useMemo(
-    () =>
-      signer
-        ? createClient({
-            url: getClusterUrl(cluster),
-            rpcSubscriptionsConfig: getClusterWsConfig(cluster),
-            payer: signer,
-          })
-        : null,
-    [cluster, signer]
-  );
+  const txClient = useMemo(() => {
+    if (!signer) return null;
+    const ws = getClusterWsConfig(cluster);
+    const rpcOptions: { rpcUrl: string; rpcSubscriptionsUrl?: string } = {
+      rpcUrl: getClusterUrl(cluster),
+    };
+    // Localnet WS is :8900; Kit's http→ws rewrite would keep :8899.
+    if (ws?.url) {
+      rpcOptions.rpcSubscriptionsUrl = ws.url;
+    }
+    return createClient()
+        .use(payer(signer))
+        .use(solanaRpc(rpcOptions));
+  }, [cluster, signer]);
 
   const send = useCallback(
     async ({ instructions }: { instructions: readonly Instruction[] }) => {

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { before, test } from "node:test";
 import {
+  createClient,
   generateKeyPairSigner,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
@@ -14,7 +15,10 @@ import {
   type Address,
   type Base64EncodedWireTransaction,
   type KeyPairSigner,
+  type Signature,
 } from "@solana/kit";
+import { payer } from "@solana/kit-plugin-signer";
+import { surfpool } from "@solana/surfpool/kit";
 import { fetchToken } from "@solana-program/token";
 import { fetchMaybeToken, fetchMint } from "@solana-program/token-2022";
 import { AeCiphertext } from "@solana/zk-sdk/node";
@@ -33,7 +37,7 @@ import {
   generateInitializeProofs,
   hpVaultNeedsCreate,
 } from "@/app/lib/server/initialize/proofs";
-import { createRpc } from "@/app/lib/server/rpc";
+import type { SolanaRpc } from "@/app/lib/server/rpc";
 
 function loadEnvFile(path: string): void {
   if (process.env.ARBITER_AUTHORITY_SECRET_KEY_BASE64) return;
@@ -67,7 +71,7 @@ loadEnvFile(resolve(import.meta.dirname, "../../.env.local"));
 const HP_MINT = "F8kzHfvDipseePMuZx81rVB7ESJRDX4DuBFTmjsh3BTW" as Address;
 const ARBITER = "arbXiNvkQ88uyPAUwxzdk5cqpbtuxSMWrQzbczqP66m" as Address;
 const DEVNET_USDC = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU" as Address;
-const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
 
 const HP_AMOUNT = 5n;
 const REWARD_AMOUNT = 1_000_000n;
@@ -77,38 +81,6 @@ const USDC_AMOUNT = 1_000_000_000n;
 
 const rpcUrl =
   process.env.ANCHOR_PROVIDER_URL?.trim() || "http://127.0.0.1:8899";
-const rpc = createRpc(rpcUrl);
-
-type JsonRpcError = { message: string };
-type JsonRpcResponse<T> = { result?: T; error?: JsonRpcError };
-
-async function surfnet<T>(method: string, params: unknown[]): Promise<T> {
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const json = (await response.json()) as JsonRpcResponse<T>;
-  if (json.error) {
-    throw new Error(`${method}: ${json.error.message}`);
-  }
-  return json.result as T;
-}
-
-async function fundSol(address: Address, lamports: bigint): Promise<void> {
-  await surfnet("surfnet_setAccount", [
-    address,
-    { lamports: Number(lamports), owner: SYSTEM_PROGRAM },
-  ]);
-}
-
-async function fundUsdc(owner: Address, amount: bigint): Promise<void> {
-  await surfnet("surfnet_setTokenAccount", [
-    owner,
-    DEVNET_USDC,
-    { amount: Number(amount), state: "initialized" },
-  ]);
-}
 
 function enableConfidentialAutoApprove(data: Buffer, authority: Address): void {
   const authorityBytes = Buffer.from(getAddressEncoder().encode(authority));
@@ -131,13 +103,40 @@ function enableConfidentialAutoApprove(data: Buffer, authority: Address): void {
   throw new Error("ConfidentialTransferMint TLV not found on HP mint");
 }
 
+let gm!: KeyPairSigner;
+let player!: KeyPairSigner;
+let arbiter!: Awaited<ReturnType<typeof deriveArbiterKeys>>;
+let hpMint!: Address;
+let client!: ReturnType<typeof createAttachClient>;
+
+function createAttachClient(arbiterSigner: KeyPairSigner) {
+  return createClient()
+    .use(payer(arbiterSigner))
+    .use(surfpool({ rpcUrl }));
+}
+
+async function fundSol(address: Address, lamports: bigint): Promise<void> {
+  await client.cheatcodes
+    .setAccount(address, { lamports, owner: SYSTEM_PROGRAM })
+    .send();
+}
+
+async function fundUsdc(owner: Address, amount: bigint): Promise<void> {
+  await client.cheatcodes
+    .setTokenAccount(owner, DEVNET_USDC, {
+      amount,
+      state: "initialized",
+    })
+    .send();
+}
+
 async function accountData(address: Address): Promise<{
   data: Buffer;
   lamports: number;
   owner: string;
   executable: boolean;
 }> {
-  const { value } = await rpc
+  const { value } = await client.rpc
     .getAccountInfo(address, { encoding: "base64" })
     .send();
   if (!value) {
@@ -157,7 +156,7 @@ async function accountData(address: Address): Promise<{
 }
 
 async function assertSupplyKeysMatchArbiter(): Promise<void> {
-  const mint = await fetchMint(rpc, hpMint);
+  const mint = await fetchMint(client.rpc, hpMint);
   const extensions = isSome(mint.data.extensions)
     ? mint.data.extensions.value
     : [];
@@ -183,20 +182,19 @@ async function assertSupplyKeysMatchArbiter(): Promise<void> {
 async function enableAutoApproveIfNeeded(): Promise<void> {
   const account = await accountData(hpMint);
   enableConfidentialAutoApprove(account.data, arbiter.signer.address);
-  await surfnet("surfnet_setAccount", [
-    hpMint,
-    {
+  await client.cheatcodes
+    .setAccount(hpMint, {
       lamports: account.lamports,
       owner: account.owner,
       executable: account.executable,
       data: account.data.toString("hex"),
-    },
-  ]);
+    })
+    .send();
 }
 
-async function confirmSignature(signature: string): Promise<void> {
+async function confirmSignature(signature: Signature): Promise<void> {
   for (let i = 0; i < 40; i += 1) {
-    const { value } = await rpc.getSignatureStatuses([signature]).send();
+    const { value } = await client.rpc.getSignatureStatuses([signature]).send();
     const status = value[0];
     if (status?.err) {
       throw new Error(
@@ -214,11 +212,6 @@ async function confirmSignature(signature: string): Promise<void> {
   throw new Error("Timed out waiting for Initialize confirmation");
 }
 
-let gm!: KeyPairSigner;
-let player!: KeyPairSigner;
-let arbiter!: Awaited<ReturnType<typeof deriveArbiterKeys>>;
-let hpMint!: Address;
-
 before(async () => {
   const env = loadArbiterEnv();
   assert.equal(
@@ -234,20 +227,26 @@ before(async () => {
     `arbiter key must be ${ARBITER}`
   );
 
+  client = createAttachClient(arbiter.signer);
   gm = await generateKeyPairSigner();
   player = await generateKeyPairSigner();
 
-  await fundSol(gm.address, SOL_LAMPORTS);
-  await fundSol(player.address, SOL_LAMPORTS);
-  await fundSol(arbiter.signer.address, SOL_LAMPORTS);
-  await fundUsdc(gm.address, USDC_AMOUNT);
-  await fundUsdc(player.address, USDC_AMOUNT);
-  await fundUsdc(arbiter.signer.address, USDC_AMOUNT);
-  await assertSupplyKeysMatchArbiter();
-  await enableAutoApproveIfNeeded();
+  Promise.all([
+    await fundSol(gm.address, SOL_LAMPORTS),
+    await fundSol(player.address, SOL_LAMPORTS),
+    await fundSol(arbiter.signer.address, SOL_LAMPORTS),
+    await fundUsdc(gm.address, USDC_AMOUNT),
+    await fundUsdc(player.address, USDC_AMOUNT),
+    await fundUsdc(arbiter.signer.address, USDC_AMOUNT),
+    await assertSupplyKeysMatchArbiter(),
+    await enableAutoApproveIfNeeded(),
+  ]);
 });
 
 test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
+  // Attach-mode Surfpool RPC omits getTransactionsForAddress from its type;
+  // runtime still supports the methods Initialize uses.
+  const rpc = client.rpc as SolanaRpc;
   const sessionId = `t${crypto.randomUUID().replaceAll("-", "").slice(0, 23)}`;
   const [sessionPda] = await findSessionPda({ sessionId });
   const [hpVault] = await findHpVaultPda({ sessionId });
