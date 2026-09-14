@@ -1,6 +1,7 @@
 .surfpool
 .taplo.toml
 .DS_Store
+node_modules/
 
 # Generated local IDE configuration
 /.cursor/

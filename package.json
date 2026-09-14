@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "rulesync": "rulesync"
+  },
+  "devDependencies": {
+    "rulesync": "16.30.2"
+  }
+}
