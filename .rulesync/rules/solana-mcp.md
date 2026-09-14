@@ -1,9 +1,15 @@
 ---
+root: false
+targets:
+  - '*'
 description: Use Solana Developer MCP for current Solana docs and Rust program checks.
 globs:
-alwaysApply: true
+  - '**/*'
+cursor:
+  alwaysApply: true
+  description: Use Solana Developer MCP for current Solana docs and Rust program checks.
+  globs: []
 ---
-
 For Solana-related work, prefer the Solana Developer MCP tools over model memory.
 
 Use `list_sections` first for non-trivial Solana questions so you can find the

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://github.com/dyoshikawa/rulesync/releases/latest/download/config-schema.json",
+  "targets": [
+    "cursor",
+    "codexcli"
+  ],
+  "features": [
+    "rules",
+    "mcp",
+    "subagents",
+    "skills",
+    "hooks",
+    "permissions"
+  ],
+  "outputRoots": [
+    "."
+  ],
+  "delete": true,
+  "verbose": false,
+  "silent": false,
+  "global": false,
+  "simulateCommands": false,
+  "simulateSubagents": false,
+  "simulateSkills": false,
+  "gitignoreTargetsOnly": true,
+  "sources": [
+    {
+      "source": "solana-foundation/solana-dev-skill",
+      "skills": [
+        "solana-dev"
+      ],
+      "ref": "main"
+    }
+  ]
+}

@@ -1,9 +1,18 @@
 ---
+root: false
+targets:
+  - '*'
 description: Map impl React app to arbiter webapp and Anchor crate to Piñata program.
-globs: impl/app/**,impl/anchor/**
-alwaysApply: false
+globs:
+  - impl/app/**
+  - impl/anchor/**
+cursor:
+  alwaysApply: false
+  description: Map impl React app to arbiter webapp and Anchor crate to Piñata program.
+  globs:
+    - impl/app/**
+    - impl/anchor/**
 ---
-
 # Impl participants
 
 `impl/` is the v1 implementation. Deposit/withdraw UI is leftover scaffold. Design names in [docs/](docs/) win. Crate name is ASCII `pinata` (no `ñ`).

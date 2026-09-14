@@ -1,9 +1,16 @@
 ---
+root: false
+targets:
+  - '*'
 description: Ground conceptual design in docs/; impl docs are implementation-only.
-globs: docs/**/*.md
-alwaysApply: true
+globs:
+  - docs/**/*.md
+cursor:
+  alwaysApply: true
+  description: Ground conceptual design in docs/; impl docs are implementation-only.
+  globs:
+    - docs/**/*.md
 ---
-
 # Documented design is the source of truth
 
 This rule applies **only** to conceptual docs in [docs/](docs/). Do not treat [impl/](impl/) markdown as design: those files are implementation notes and must reference the owning `docs/*.md`. They must not redefine or contradict **Decided** / **Still open**.

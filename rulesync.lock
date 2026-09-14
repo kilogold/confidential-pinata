@@ -1,0 +1,18 @@
+{
+  "lockfileVersion": 1,
+  "sources": {
+    "solana-foundation/solana-dev-skill": {
+      "requestedRef": "main",
+      "resolvedRef": "69935cfc19298b7db6e6f7471f56ff79369214da",
+      "resolvedAt": "2026-09-14T04:39:56.700Z",
+      "skills": {
+        "solana-dev": {
+          "integrity": "sha256-55d80045b2810ba6d9243eb39d2e350d7f4ff9287ab51b6ad215bb54389e1e30"
+        }
+      },
+      "skillSelection": [
+        "solana-dev"
+      ]
+    }
+  }
+}
