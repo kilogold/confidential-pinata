@@ -22,7 +22,7 @@ flowchart LR
 
 | Role | Does | Does not |
 | --- | --- | --- |
-| **Game master** | Locks a **public** reward, sets the strike fee, pays Initialize/Close rent, receives the SOL pile at game-over. Uses the [arbiter webapp](deployment.md). | Pick HP. Know the arbiter’s quote, the offset, or remaining HP exactly. Operate live proofs or read the backend (**A6**; enforcement [arbiter.md](arbiter.md) **O1**). |
+| **Game master** | Locks a **public** reward, sets the strike fee, funds Initialize PDA rent, completes Initialize and Close as fee payer, receives reclaimed account rent on Close, and receives the SOL pile at game-over. Uses the [arbiter webapp](deployment.md). | Pick HP. Know the arbiter’s quote, the offset, or remaining HP exactly. Operate live proofs or read the backend (**A6**; enforcement [arbiter.md](arbiter.md) **O1**). |
 | **Arbiter** | v1 webapp (frontend, backend, program client). Prices HP, holds keys, attaches proofs. Primary client for GM and players (**DEP4**). | — |
 | **Player** | Registers and Attacks through the webapp. Pays SOL. May win the public token reward. Sees the prize. | Know remaining HP. |
 

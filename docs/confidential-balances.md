@@ -54,7 +54,7 @@ flowchart TB
 | Remaining HP cannot be inferred (arbiter quote and offset are secret). | Strike count **is** realized initial HP **if** HP changed only via conforming Attacks. |
 | Zero leftover HP is **not** a public field. | “Prior remaining HP” on the killing strike is **1** — from 1 HP per hit, not from decrypting the ciphertext. |
 
-Exact HP, the offset, and the offset range are **never published**.
+Exact HP, the offset, and the offset range are **never directly disclosed during play**. At game-over, realized initial HP is inferable from strike count if HP changed only via conforming Attacks, as described above.
 
 ## HP Token-2022 path
 

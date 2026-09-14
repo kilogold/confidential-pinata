@@ -47,7 +47,7 @@ These MUST live only in the backend:
 | HP vault authority | Token-2022 signer for each instance’s HP token account. **Reused.** MAY be the same keypair as mint authority. Simplest v1: that env keypair is both. |
 | HP draw and proof generation | Plaintext HP |
 
-The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MAY be a PDA **address**; that is not custody of these keys.
+The arbiter MUST reuse that key material for every instance and every Initialize, including a later session on the same piñata. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MUST be a PDA **address**; that is not custody of these keys.
 
 v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1** in this file): a game master with host access can still read the file.
 
