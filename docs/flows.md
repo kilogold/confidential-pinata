@@ -16,7 +16,7 @@ Instruction layouts, account metas, RPC shapes, and proof byte formats are out o
 
 Starts a session (also a new session after game-over; **D4**).
 
-GM MUST supply the public reward and the strike fee. GM MUST NOT choose HP (**D2**, **A3**). Using the frontend does not count as reading the arbiter (**DEP3**). Initialize requires a SAS attestation ([game.md](game.md)); credential / person-id field still open there.
+GM MUST supply the public reward and the strike fee. GM MUST NOT choose HP (**D2**, **A3**). Using the frontend does not count as reading the arbiter (**DEP3**). Prototype Initialize uses wallet-pubkey identity only. SAS attestation is deliberately deferred but MUST be added before product launch; credential / person-id field remains open in [game.md](game.md).
 
 | Who | What |
 | --- | --- |
@@ -64,7 +64,7 @@ sequenceDiagram
 
 ## F2. Attack
 
-Registered player strikes. On-chain result: **D3**. Player MUST already be registered. GM person id MUST NOT Attack ([game.md](game.md)). SAS attestation required; credential / person-id field still open there. Attack deals 1 HP.
+Registered player strikes. On-chain result: **D3**. Player MUST already be registered. Attack deals 1 HP. The prototype does not enforce SAS identity or rejection by GM person id; both MUST be added before product launch as specified in [game.md](game.md).
 
 | Instruction | Effect | Who authorizes |
 | --- | --- | --- |
