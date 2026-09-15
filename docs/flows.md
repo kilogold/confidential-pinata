@@ -11,8 +11,8 @@ Instruction layouts, account metas, RPC shapes, commitment bytes, and proof byte
 1. Wallets MUST connect to the arbiter webapp with a Solana wallet adapter.
 2. The webapp MUST supply transaction(s) already assembled and partially signed by the arbiter before the wallet sees them. The connected wallet MUST sign as fee payer: GM for Initialize and Close, player for Attack (including strike fee), and requesting participant for Settle.
 3. Send MUST use the connected wallet's own RPC, not a webapp-submitted send on its behalf. A wallet MUST NOT receive an unsigned Initialize, Attack, Settle, or Close to assemble independently.
-4. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign (`ConfidentialBurn`, `ApplyPendingBalance`, vault close) = **DEP6**. Settle also requires the configured arbiter authority signature (**D3**).
-5. `ApplyPendingBalance`, `ApplyPendingBurn`, and `UpdateDecryptableSupply` are sibling Token-2022 instructions in prototype v1, not Piñata CPIs. That is the early-development grant; later versions wrap or otherwise bind HP operations ([deployment.md](deployment.md) **DEP6** FUTURE).
+4. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign = **DEP6**. Initialize forwards the arbiter's signer privilege to its `ConfidentialMint` and `ApplyPendingBalance` CPIs; Attack does the same for its `ConfidentialBurn` CPI. Settle also requires the configured arbiter authority signature (**D3**).
+5. `ApplyPendingBurn` and `UpdateDecryptableSupply` are sibling Token-2022 instructions in prototype v1, not Piñata CPIs. `ApplyPendingBalance` is a CPI inside Initialize. The remaining sibling path is part of the early-development grant; later versions wrap or otherwise bind HP operations ([deployment.md](deployment.md) **DEP6** FUTURE).
 
 ## F1. Initialize
 
@@ -24,12 +24,12 @@ GM supplies the public reward and strike fee but MUST NOT choose HP (**D2**, **A
 | --- | --- |
 | GM | Public reward, strike fee, fee payer, PDA rent, completed signature. |
 | Arbiter backend | Jupiter price, realized offset from public range `0..=5`, HP / hidden Drawing range length, `ConfidentialMint` proofs, mint-authority and vault-authority partial-signatures, vault and supply keys. |
-| Piñata program | Initialize, lock reward, reset successful-Attack count, CPI `ConfidentialMint`. Immediately after: `ApplyPendingBalance` as arbiter vault authority. Enter `Live`. |
+| Piñata program | Initialize, lock reward, reset successful-Attack count, CPI `ConfidentialMint`, then immediately CPI `ApplyPendingBalance` as arbiter vault authority. Enter `Live` only if both CPIs succeed. |
 
 | Instruction | Effect | Who authorizes |
 | --- | --- | --- |
 | `ConfidentialMint` (CPI during Initialize) | Encrypted initial HP / eventual Drawing range length into this vault's **pending** on the shared mint. | HP mint authority |
-| `ApplyPendingBalance` (next instruction) | Pending → **available**. Required before any Attack burn. | HP vault authority (not a PDA) |
+| `ApplyPendingBalance` (second CPI inside Initialize) | Pending → **available** atomically with Initialize. Required before any Attack burn. | HP vault authority (arbiter transaction signer; not a PDA) |
 
 ```mermaid
 sequenceDiagram
@@ -44,21 +44,21 @@ sequenceDiagram
   FE->>BE: reward + strike fee
   Note over BE: Price (A4). Draw offset from public 0..=5.<br/>Calculate hidden HP / Drawing range length (A3).
   BE->>BE: generate ElGamal ZK proofs
-  BE->>BE: build Initialize + ApplyPendingBalance
+  BE->>BE: build Initialize with mint + apply CPIs
   BE->>BE: partial-sign mint and vault authorities
   BE-->>FE: partially signed transaction
   FE-->>GM: transaction to sign; GM is fee payer
   Note over FE,GM: No vault/supply keys, exact quote,<br/>realized offset, or HP (A6, DEP3).
   GM->>Prog: complete signature; send via wallet RPC
   Prog->>RT: allocate instance PDAs
-  Note over Prog: ConfidentialMint pending; ApplyPendingBalance available.<br/>Reward locked; count = 0; state = Live.
+  Note over Prog: CPI ConfidentialMint pending; CPI ApplyPendingBalance available.<br/>Both succeed atomically; reward locked; count = 0; state = Live.
 ```
 
 **MUST**
 
 1. Connect and request Initialize through the webapp (**F0**).
 2. Backend performs **A3**, generating confidential HP mint proofs. Exact quote, realized offset, and HP remain backend-only; the `0..=5` range is public.
-3. Backend assembles Initialize with `ConfidentialMint` CPI and puts `ApplyPendingBalance` immediately after. It partial-signs as mint authority and vault authority; no PDA signs the confidential operation.
+3. Backend assembles Initialize so the program CPIs `ConfidentialMint` and then immediately CPIs `ApplyPendingBalance`. The arbiter partial-signs Initialize; its signer privilege authorizes the mint and vault operations. No PDA signs either confidential operation.
 4. GM completes as fee payer and sends through wallet RPC. Returned payload MUST NOT expose backend secrets or hidden values.
 5. Program creates/resets the instance, locks the public reward, sets successful-Attack count to zero, makes HP available, and enters `Live`.
 
@@ -182,7 +182,7 @@ Normative language follows RFC 2119. **F0** applies to every flow. **F1**, **F2*
 
 ### O1. Initialize wire details
 
-`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize and other dependent instructions besides that pair, such as account configuration.
+The `ConfidentialMint` CPI followed immediately by the `ApplyPendingBalance` CPI is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize and other dependent operations besides that CPI pair, such as account configuration.
 
 ### O2. Close wire details
 

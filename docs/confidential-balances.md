@@ -70,7 +70,7 @@ flowchart LR
 | Instruction | Effect | Signer |
 | --- | --- | --- |
 | `ConfidentialMint` | Encrypted initial HP / eventual Drawing range length into this vault's **pending**. CPI during Initialize. | HP **mint** authority (arbiter backend) |
-| `ApplyPendingBalance` | Pending → **available**. MUST follow mint immediately. Required before any Attack burn. | HP **vault** authority (arbiter; not a PDA) |
+| `ApplyPendingBalance` | Pending → **available**. CPI during Initialize immediately after the `ConfidentialMint` CPI, so both effects are atomic. Required before any Attack burn. | HP **vault** authority (arbiter transaction signer; not a PDA) |
 | `ConfidentialBurn` | Homomorphic −1 on this vault. **This is the successful strike paired with one index assignment.** CPI from Attack. | Vault authority + burn proofs (not mint authority, not a PDA) |
 | `ApplyPendingBurn` | Folds the shared mint's `pending_burn` into encrypted supply. **Not** the HP decrement or index record. | Mint authority |
 | `UpdateDecryptableSupply` | Refreshes mint AES decryptable supply after `ApplyPendingBurn`. **Not** the HP decrement or index record. | Mint authority + arbiter-held supply AES |
@@ -99,7 +99,7 @@ flowchart LR
 
 - Two token types: **HP** (confidential; 1 token = 1 HP = 1 remaining successful strike; one shared mint; one token account per instance) and **reward** (public token; conceptually a stablecoin). Confidential Balances apply to HP only. HP vault **owner** is Token-2022; HP vault **authority** is the arbiter; the vault **address** is an instance PDA ([deployment.md](deployment.md) **DEP6**). v1 accepts arbiter out-of-band HP Token-2022 calls; later versions MUST NOT.
 - Initial HP determines the hidden final Drawing range length; remaining HP is the hidden number of successful strikes before closure. Every successful Attack's one-unit burn is paired atomically with its public chronological index assignment. Failed transactions receive no index.
-- Initial HP is confidential-minted so public deposit and mint supply cannot leak the draw. `ConfidentialMint`, `ApplyPendingBalance`, `ConfidentialBurn`, `ApplyPendingBurn`, and `UpdateDecryptableSupply` retain the authority, CPI, pending/available, shared-supply, and key-reuse rules above (**A2**, **DEP5**, **DEP6**).
+- Initial HP is confidential-minted so public deposit and mint supply cannot leak the draw. Initialize MUST CPI `ConfidentialMint` and immediately CPI `ApplyPendingBalance`, atomically moving the new HP from pending to available. Attack MUST CPI `ConfidentialBurn`; `ApplyPendingBurn` and `UpdateDecryptableSupply` remain sibling Token-2022 instructions in prototype v1. All retain the authority, shared-supply, and key-reuse rules above (**A2**, **DEP5**, **DEP6**).
 - Zero remaining HP is attested only when an Attack includes `VerifyZeroCiphertext` bound to the post-burn HP vault (**D3**). Success transitions to `Drawing`; it does not pay the reward or pile. The omitted-proof and out-of-band-mutation caveats remain accepted prototype trust assumptions.
 - The public offset range is `0..=5`. Exact HP, remaining HP, realized offset, and arbiter quote stay secret during play. When striking closes, final successful-Attack count `N` reveals realized initial HP and fixes the Drawing range `[0, N - 1]` if HP changed only through conforming Attacks.
 - The selected-index commitment is public in `Drawing`; selected index, nonce, winning wallet, and payout become public at `Settle`.

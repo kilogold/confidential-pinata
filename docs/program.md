@@ -30,7 +30,7 @@ While `Drawing`, only **Settle** is valid. After `GameOver`, only **Close** or *
 
 | Instruction | When | What |
 | --- | --- | --- |
-| **Initialize** | `Uninitialized` or `GameOver`; never `Live` or `Drawing`. | GM pays PDA rent, locks a **public** reward, sets the strike fee. Arbiter prices, sets HP, and confidential-mints into this vault on the **shared** mint. `ConfidentialMint` CPI; `ApplyPendingBalance` immediately after (arbiter vault authority, no PDA signer). Resets the successful-Attack count for a new session. |
+| **Initialize** | `Uninitialized` or `GameOver`; never `Live` or `Drawing`. | GM pays PDA rent, locks a **public** reward, sets the strike fee. Arbiter prices and sets HP. Initialize CPIs `ConfidentialMint` into this vault on the **shared** mint, then immediately CPIs `ApplyPendingBalance`; both use the arbiter's transaction signer privilege and no PDA signer. Resets the successful-Attack count for a new session. |
 | **Register** | `Live` only. | Admit a player and set up their reward token account. |
 | **Attack** | `Live` only. | Atomically move the fixed strike fee into this pile, burn 1 HP, assign the next zero-based successful-Attack index to the attacker, and increment the successful-Attack count. A terminal zero proof transitions to `Drawing` and stores a selected-index commitment. Attack never transfers the reward or pile. |
 | **Settle** | `Drawing` only. | Arbiter-signed commitment opening. Validate the selected index, then atomically transfer the public reward to the player assigned that index and the SOL pile to the GM; enter `GameOver`. The requester is fee payer (**F3**). |
@@ -77,7 +77,7 @@ The lifecycle MUST be `Uninitialized → Live → Drawing → GameOver`, with th
 
 ### D2. Hit points at Initialize
 
-The game master MUST NOT choose HP. HP at Initialize MUST be set by the arbiter using **A3**. Initial HP determines how many successful strikes close play and therefore the hidden length of the Drawing range. Public deposit amounts and public mint supply MUST NOT reveal it. Initialize MUST reset the session's successful-Attack count to zero.
+The game master MUST NOT choose HP. HP at Initialize MUST be set by the arbiter using **A3**. Initial HP determines how many successful strikes close play and therefore the hidden length of the Drawing range. Public deposit amounts and public mint supply MUST NOT reveal it. Initialize MUST CPI `ConfidentialMint` and then immediately CPI `ApplyPendingBalance`, making the pending HP available atomically before Initialize succeeds. Initialize MUST reset the session's successful-Attack count to zero.
 
 ### D3. Attack, terminal transition, and Settle
 

@@ -43,7 +43,7 @@ flowchart TB
 
 There is no separate participation asset or per-strike account. Successful Attack history records chronological index-to-wallet assignments. The arbiter performs the prototype history scan; the program does not scan historical transactions.
 
-> **FUTURE (not v1).** Later versions MUST restrict HP modifications to the Piñata program. Out-of-band HP modification by the arbiter MUST be forbidden: Token-2022 HP operations with no Piñata instruction in the transaction, and HP operations that are only sibling Token-2022 instructions rather than Piñata CPIs. v1 allows both so the Piñata program can have fewer instructions during early development. Honest v1 already uses siblings (`ApplyPendingBalance` after Initialize; `ApplyPendingBurn` / `UpdateDecryptableSupply` after Attack). How later versions bind HP operations to the program is unspecified (**O1** in this file, not [arbiter.md](arbiter.md) **O1**).
+> **FUTURE (not v1).** Later versions MUST restrict HP modifications to the Piñata program. Out-of-band HP modification by the arbiter MUST be forbidden: Token-2022 HP operations with no Piñata instruction in the transaction, and HP operations that are only sibling Token-2022 instructions rather than Piñata CPIs. In prototype v1, Initialize CPIs both `ConfidentialMint` and `ApplyPendingBalance`; honest v1 still uses sibling `ApplyPendingBurn` / `UpdateDecryptableSupply` instructions after Attack. v1 accepts the remaining sibling and fully out-of-band paths so the Piñata program can have fewer instructions during early development. How later versions bind HP operations to the program is unspecified (**O1** in this file, not [arbiter.md](arbiter.md) **O1**).
 
 ## Participants
 
