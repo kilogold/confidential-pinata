@@ -2,31 +2,33 @@
 
 Sequences among the participants in [deployment.md](deployment.md). On-chain: [program.md](program.md). Arbiter: [arbiter.md](arbiter.md).
 
-Instruction layouts, account metas, RPC shapes, and proof byte formats are out of scope.
+Instruction layouts, account metas, RPC shapes, commitment bytes, and proof byte formats are out of scope.
 
-**F0** applies to every flow. Initialize = **F1**. Attack = **F2**. Close wire details are still **O2**.
+**F0** applies to every flow. Initialize = **F1**. Attack = **F2**. Settle = **F3**. Close wire details remain **O2**.
 
 ## F0. Wallet connect and send
 
 1. Wallets MUST connect to the arbiter webapp with a Solana wallet adapter.
-2. The webapp MUST supply the transaction(s). Those transactions MUST already be assembled by the arbiter and MUST already be partial-signed by it before the wallet sees them. The connected wallet MUST sign as fee payer (GM pays Initialize rent and Close; player pays Attack, including the strike fee). Send MUST use that wallet’s own RPC, not a webapp-submitted send on their behalf. The wallet MUST NOT be given an unsigned Attack (or Initialize/Close) to assemble.
-3. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign (`ConfidentialBurn`, `ApplyPendingBalance`, vault close) = **DEP6**. Attack also requires burn proofs only the backend can produce; a player MUST NOT assemble a competing Attack from an unsigned payload. `ApplyPendingBalance`, `ApplyPendingBurn`, and `UpdateDecryptableSupply` are sibling Token-2022 instructions in v1, not Piñata CPIs. That is the early-development grant; later versions wrap HP ops ([deployment.md](deployment.md) **DEP6** FUTURE).
+2. The webapp MUST supply transaction(s) already assembled and partially signed by the arbiter before the wallet sees them. The connected wallet MUST sign as fee payer: GM for Initialize and Close, player for Attack (including strike fee), and requesting participant for Settle.
+3. Send MUST use the connected wallet's own RPC, not a webapp-submitted send on its behalf. A wallet MUST NOT receive an unsigned Initialize, Attack, Settle, or Close to assemble independently.
+4. Mint-authority partial-sign = **DEP5**. Vault-authority partial-sign (`ConfidentialBurn`, `ApplyPendingBalance`, vault close) = **DEP6**. Settle also requires the configured arbiter authority signature (**D3**).
+5. `ApplyPendingBalance`, `ApplyPendingBurn`, and `UpdateDecryptableSupply` are sibling Token-2022 instructions in prototype v1, not Piñata CPIs. That is the early-development grant; later versions wrap or otherwise bind HP operations ([deployment.md](deployment.md) **DEP6** FUTURE).
 
 ## F1. Initialize
 
-Starts a session (also a new session after game-over; **D4**).
+Starts a session from `Uninitialized` or starts a new session after `GameOver` (**D4**). It MUST fail from `Live` or `Drawing`.
 
-GM MUST supply the public reward and the strike fee. GM MUST NOT choose HP (**D2**, **A3**). Using the frontend does not count as reading the arbiter (**DEP3**). Prototype Initialize uses wallet-pubkey identity only. SAS attestation is deliberately deferred but MUST be added before product launch; credential / person-id field remains open in [game.md](game.md).
+GM supplies the public reward and strike fee but MUST NOT choose HP (**D2**, **A3**). Using the frontend does not count as reading the arbiter (**DEP3**). Prototype Initialize uses wallet-pubkey identity only. SAS attestation is deliberately deferred but MUST be added before product launch; credential and person-id field remain open in [game.md](game.md).
 
 | Who | What |
 | --- | --- |
-| GM | Public reward, strike fee, fee payer (PDA rent). Completes the signature. |
-| Arbiter backend | Jupiter price, hidden offset, HP, `ConfidentialMint` proofs, mint-authority and vault-authority partial-sign, vault and supply keys. |
-| Piñata program | Initialize (CPI `ConfidentialMint`). Immediately after: `ApplyPendingBalance` as arbiter vault authority (no PDA signer). |
+| GM | Public reward, strike fee, fee payer, PDA rent, completed signature. |
+| Arbiter backend | Jupiter price, realized offset from public range `0..=5`, HP / hidden Drawing range length, `ConfidentialMint` proofs, mint-authority and vault-authority partial-signatures, vault and supply keys. |
+| Piñata program | Initialize, lock reward, reset successful-Attack count, CPI `ConfidentialMint`. Immediately after: `ApplyPendingBalance` as arbiter vault authority. Enter `Live`. |
 
 | Instruction | Effect | Who authorizes |
 | --- | --- | --- |
-| `ConfidentialMint` (CPI during Initialize) | Encrypted HP into this vault’s **pending** on the shared mint. | HP mint authority |
+| `ConfidentialMint` (CPI during Initialize) | Encrypted initial HP / eventual Drawing range length into this vault's **pending** on the shared mint. | HP mint authority |
 | `ApplyPendingBalance` (next instruction) | Pending → **available**. Required before any Attack burn. | HP vault authority (not a PDA) |
 
 ```mermaid
@@ -38,48 +40,46 @@ sequenceDiagram
   participant Prog as Piñata program
   participant RT as Solana runtime
 
-  GM->>FE: connect (wallet adapter)
-  GM->>FE: request Initialize
-  FE->>BE: Initialize request
-  Note over BE: Price (A4). Offset. HP (A3).<br/>Keys stay on backend (A2, DEP2, DEP5, DEP6).
+  GM->>FE: connect and request Initialize
+  FE->>BE: reward + strike fee
+  Note over BE: Price (A4). Draw offset from public 0..=5.<br/>Calculate hidden HP / Drawing range length (A3).
   BE->>BE: generate ElGamal ZK proofs
-  BE->>BE: build Initialize plus ApplyPendingBalance
-  BE->>BE: partial-sign mint authority and vault authority
+  BE->>BE: build Initialize + ApplyPendingBalance
+  BE->>BE: partial-sign mint and vault authorities
   BE-->>FE: partially signed transaction
-  FE-->>GM: transaction to sign (GM is fee payer)
-  Note over FE,GM: MUST NOT include vault keys, supply keys, HP, offset, or range (A6, DEP3).
+  FE-->>GM: transaction to sign; GM is fee payer
+  Note over FE,GM: No vault/supply keys, exact quote,<br/>realized offset, or HP (A6, DEP3).
   GM->>Prog: complete signature; send via wallet RPC
   Prog->>RT: allocate instance PDAs
-  Note over Prog: CPI ConfidentialMint (pending).<br/>ApplyPendingBalance (available; arbiter vault authority).<br/>Live. Reward locked. Shared mint is not created per instance.
+  Note over Prog: ConfidentialMint pending; ApplyPendingBalance available.<br/>Reward locked; count = 0; state = Live.
 ```
 
 **MUST**
 
-1. **Connect** to the arbiter webapp (**F0**).
-2. **Request** Initialize from the frontend (public reward and strike fee). Frontend MUST forward to the backend.
-3. **Proofs.** Backend MUST perform **A3** and MUST generate the ElGamal ZK proofs for the confidential HP mint. Proof generation MUST stay on the backend (**A2**).
-4. **Build.** Backend MUST assemble Initialize (CPI `ConfidentialMint`) and MUST put `ApplyPendingBalance` immediately after. Arbiter MUST partial-sign that apply as vault authority (**DEP6**). MUST NOT PDA-sign it. MUST partial-sign as mint authority (`ConfidentialMint`, **DEP5**) and MUST supply the new decryptable available balance for `ApplyPendingBalance` (vault AES). Frontend MUST return that transaction for **F0**.
-5. **Sign and send.** Returned transaction and any frontend payload MUST NOT include vault ElGamal secrets, supply ElGamal or AES secrets, the HP draw, `offset`, or the offset range. GM MUST complete as fee payer and send via wallet RPC (**F0**).
-6. **On chain.** Program MUST initialize the instance. Runtime MUST allocate that instance’s PDAs (including the HP vault token account). Initialize MUST confidential-mint HP into that vault’s pending on the shared mint. `ApplyPendingBalance` MUST follow immediately, authorized by the arbiter as vault authority. Session live; public reward locked.
+1. Connect and request Initialize through the webapp (**F0**).
+2. Backend performs **A3**, generating confidential HP mint proofs. Exact quote, realized offset, and HP remain backend-only; the `0..=5` range is public.
+3. Backend assembles Initialize with `ConfidentialMint` CPI and puts `ApplyPendingBalance` immediately after. It partial-signs as mint authority and vault authority; no PDA signs the confidential operation.
+4. GM completes as fee payer and sends through wallet RPC. Returned payload MUST NOT expose backend secrets or hidden values.
+5. Program creates/resets the instance, locks the public reward, sets successful-Attack count to zero, makes HP available, and enters `Live`.
 
 ## F2. Attack
 
-Registered player strikes. On-chain result: **D3**. Player MUST already be registered. Attack deals 1 HP. The prototype does not enforce SAS identity or rejection by GM person id; both MUST be added before product launch as specified in [game.md](game.md).
+A registered player strikes the piñata. Every paid successful Attack burns 1 HP and assigns the attacking wallet the next zero-based chronological index. More successful strikes give that wallet more indexes in the eventual Drawing range and therefore higher odds. The prototype does not enforce SAS identity or rejection by GM person id; both MUST be added before product launch as specified in [game.md](game.md).
 
 | Instruction | Effect | Who authorizes |
 | --- | --- | --- |
-| `ConfidentialBurn` | Homomorphic −1 on this vault. **This is the hit.** CPI from Attack. | Vault authority + burn proofs |
-| `ApplyPendingBurn` | Shared mint `pending_burn` → encrypted supply. **Not** the hit. | Mint authority |
-| `UpdateDecryptableSupply` | Mint AES decryptable supply after `ApplyPendingBurn`. **Not** the hit. | Mint authority + supply AES |
+| `ConfidentialBurn` | Homomorphic −1 on this vault: the successful strike paired with one index assignment. CPI from Attack. | Vault authority + burn proofs |
+| `ApplyPendingBurn` | Shared mint `pending_burn` → encrypted supply. Not the strike or index record. | Mint authority |
+| `UpdateDecryptableSupply` | Mint AES decryptable supply after `ApplyPendingBurn`. Not the strike or index record. | Mint authority + supply AES |
 
-Kill is not “vault bytes look like zero.” Kill is `VerifyZeroCiphertext` on this Attack, CPI-verified and byte-bound to the post-burn vault (**D3**).
+Terminal closure is not “vault bytes look like zero.” It is `VerifyZeroCiphertext` on this Attack, CPI-verified and byte-bound to the post-burn vault (**D3**).
 
 | Branch | Arbiter puts on Attack | On chain |
 | --- | --- | --- |
-| Live | Burn proofs only. MUST NOT include `VerifyZeroCiphertext`. | Stay live. No payout. |
-| Kill | Burn proofs plus `VerifyZeroCiphertext` for the post-burn `available_balance` blob (not a fresh `Encrypt(0)`). | CPI verify, bind to vault, pay pile and reward or fail the whole Attack. |
+| Non-terminal | Burn proofs only. MUST NOT include `VerifyZeroCiphertext`. | Fee and burn succeed; assign the wallet's next chronological index; increment count; remain `Live`. No payout. |
+| Terminal | Burn proofs, `VerifyZeroCiphertext` for post-burn `available_balance`, and a hiding/binding commitment to session, final `N`, persisted selected index, and fresh nonce. | Verify and bind; fee and burn succeed; assign index `N - 1`; set final Drawing range `[0, N - 1]`; store commitment; enter `Drawing`. No payout. |
 
-Omitting the kill proof when leftover HP is actually 0 is **A7**. Only a malicious or exploited arbiter can land it; a player cannot (**F0**). Conforming arbiter MUST NOT assemble it (**A5**).
+Failed transactions receive no index. Omitting the zero proof when post-burn HP is zero is **A7**; only a malicious or exploited arbiter can land that path because a player cannot rebuild the already-partial-signed Attack (**F0**).
 
 ```mermaid
 sequenceDiagram
@@ -89,59 +89,105 @@ sequenceDiagram
   participant BE as Arbiter backend
   participant Prog as Piñata program
 
-  Player->>FE: connect (wallet adapter)
-  Player->>FE: request Attack
+  Player->>FE: connect and request Attack
   FE->>BE: Attack request
-  Note over BE: Keys stay on backend.<br/>MUST NOT reveal HP, offset, or range (A5).
-  BE->>BE: generate ConfidentialBurn proofs for HP minus 1
-  alt remaining HP will be zero
-    BE->>BE: also VerifyZeroCiphertext for post-burn vault blob (A5)
-  else remaining HP will not be zero
-    Note over BE: MUST NOT include VerifyZeroCiphertext
+  BE->>BE: generate ConfidentialBurn proofs for HP − 1
+  alt post-burn HP is nonzero
+    Note over BE: Burn proof only
+  else post-burn HP is zero
+    BE->>BE: generate zero proof
+    BE->>BE: calculate final N; uniformly choose index in [0, N−1]
+    BE->>BE: persist selected index + fresh nonce once
+    BE->>BE: commit(session, N, index, nonce)
   end
-  BE->>BE: build Attack sequence
-  BE->>BE: partial-sign burn as vault authority; supply ixs as mint authority
+  BE->>BE: build and partial-sign Attack sequence
   BE-->>FE: transaction(s)
-  FE-->>Player: to sign (player is fee payer)
-  Note over FE,Player: MUST NOT include vault keys, supply keys, HP, offset, or range.
-  loop each transaction in the sequence
+  FE-->>Player: transaction(s); player is fee payer
+  Note over FE,Player: Terminal payload exposes commitment only,<br/>not selected index or nonce.
+  loop each transaction in sequence
     Player->>Prog: complete signature; send via wallet RPC
   end
-  Note over Prog: ConfidentialBurn: HP minus 1. Strike SOL to pile.<br/>ApplyPendingBurn then UpdateDecryptableSupply (supply only).
-  alt no VerifyZeroCiphertext in Attack
-    Note over Prog: Stay live (D3). Only malicious/exploited arbiter omits (A7).
-  else VerifyZeroCiphertext present
-    Prog->>Prog: CPI verify, byte-bind to post-burn vault
-    alt fail or mismatch
-      Note over Prog: Whole Attack fails. Burn undone.
-    else match
-      Note over Prog: Game over. GM gets SOL pile. Killer gets public reward (D3).
-    end
+  alt any transaction fails
+    Note over Prog: No index assignment
+  else non-terminal Attack succeeds
+    Note over Prog: Fee + HP − 1; next index; remain Live
+  else Terminal Attack succeeds
+    Prog->>Prog: verify zero proof and byte-bind vault
+    Note over Prog: Final index included; store commitment; enter Drawing.<br/>Reward and pile remain escrowed.
   end
 ```
 
-Proof setup MAY precede Attack if proofs do not fit in one legacy/v0 transaction. Kill settlement MUST stay atomic inside Attack (**D3**).
+Proof setup MAY precede Attack if proofs do not fit in one legacy/v0 transaction. Payout MUST NOT occur in Attack.
 
 **MUST**
 
-1. **Connect** (**F0**).
-2. **Request** Attack from the frontend. Frontend MUST forward to the backend.
-3. **Proofs.** Backend MUST generate Token-2022 proofs for homomorphic −1. If leftover HP is 0, MUST attach `VerifyZeroCiphertext` for the post-burn vault `available_balance` blob (**A5**). If not, MUST NOT. Proof generation MUST stay on the backend (**A2**).
-4. **Build.** Proof setup as needed → Attack with `ConfidentialBurn` CPI (HP − 1; arbiter vault-authority signature, **DEP6**) and, on a kill, `VerifyZeroCiphertext` → `ApplyPendingBurn` immediately after → `UpdateDecryptableSupply`. Arbiter MUST partial-sign the two supply ixs as mint authority (**DEP5**).
-5. **Fit.** If proofs do not fit in one legacy/v0 transaction, the webapp MUST return a sequence and the player MUST sign each. Earlier transactions are proof setup only. When Solana Transaction v1 (SIMD-0385, 4096-byte transactions) is usable on the target cluster, the webapp SHOULD collapse to one transaction and one player signature.
-6. **Sign and send.** Frontend MUST return the transaction(s). Player MUST complete each as fee payer (strike fee included) via wallet RPC (**F0**). Returned payloads MUST NOT include vault ElGamal secrets, supply ElGamal or AES secrets, remaining HP, the HP draw, `offset`, or the offset range. Arbiter MUST NOT expose per-strike refusal to the GM (**A5**).
-7. **On chain.** Program MUST debit one HP (`ConfidentialBurn`) and credit the strike fee to the instance SOL pile. Live versus kill MUST follow **D3**.
+1. Player connects and requests Attack through the webapp (**F0**).
+2. Backend generates burn proofs. If post-burn HP is zero, it also generates the bound zero proof, calculates final `N`, uniformly chooses one index from the Drawing range `[0, N - 1]`, generates a fresh nonce, persists that choice once, and supplies only the commitment (**A5**, prototype raffle selection).
+3. Backend builds proof setup as needed → Attack with `ConfidentialBurn` CPI → `ApplyPendingBurn` → `UpdateDecryptableSupply`, and partial-signs the required vault and mint authority operations.
+4. If proofs do not fit a legacy/v0 transaction, the webapp returns a sequence and the player signs each. Earlier transactions are proof setup only. When Solana Transaction v1 is usable on the target cluster, the webapp SHOULD collapse to one transaction and signature.
+5. Player completes each transaction as fee payer and sends through wallet RPC. Payloads MUST NOT expose backend keys, exact quote, realized offset, HP, remaining HP, or the selected index/nonce.
+6. A successful Attack assigns its wallet the next zero-based chronological index. The Terminal Attack's index is included in the Drawing range. A non-terminal Attack remains `Live`; a valid Terminal Attack enters `Drawing`. Neither pays reward or pile.
+
+## F3. Settle
+
+Any participant may request settlement through the arbiter webapp once the instance is `Drawing`. The requesting wallet is fee payer; it need not be the player assigned the selected index, Terminal Attacker, or GM.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Req as Requester wallet
+  participant FE as Arbiter frontend
+  participant BE as Arbiter backend
+  participant Ledger as Public successful-Attack history
+  participant Prog as Piñata program
+
+  Req->>FE: request Settle
+  FE->>BE: instance + requester
+  BE->>BE: confirm state = Drawing
+  BE->>BE: load the one persisted index + nonce
+  BE->>Ledger: scan index-to-attacker history
+  Ledger-->>BE: player assigned selected index
+  BE->>BE: build Settle; sign as arbiter
+  BE-->>FE: partially signed transaction + visible result
+  FE-->>Req: transaction; requester is fee payer
+  alt requester refuses to sign
+    Note over BE: Persisted result remains unchanged.<br/>A later requester receives the same result.
+  else requester signs
+    Req->>Prog: complete signature; send via wallet RPC
+    Prog->>Prog: verify instance, Drawing, arbiter, range, commitment
+    Prog->>Prog: atomically pay reward to assigned player and pile to GM
+    Note over Prog: state = GameOver; cannot settle twice
+  end
+```
+
+**MUST**
+
+1. Any participant requests settlement through the webapp.
+2. Arbiter confirms the instance is `Drawing`.
+3. Arbiter loads, without changing, the persisted final `N`, selected index, and nonce.
+4. Arbiter scans chronological successful-Attack history and identifies the wallet assigned the selected index. The program does not scan historical transactions; prototype v1 trusts this mapping.
+5. Arbiter builds `Settle`, reveals the selected index and nonce, supplies that player's reward account, and signs as configured arbiter authority.
+6. Requester signs as fee payer and sends through their wallet RPC.
+7. Program verifies the correct instance, state `Drawing`, configured arbiter signer, `index < N`, and the commitment opening bound to session, `N`, index, and nonce.
+8. Program atomically pays the entire public reward to the player assigned the selected index and the entire SOL pile to the GM.
+9. Program enters `GameOver`; the state guard prevents a second settlement.
+
+If a requester refuses after seeing the result, the arbiter MUST return the same committed result to every subsequent requester. Refusal can delay settlement but cannot trigger a reroll. Arbiter refusal to build or sign remains a censorship/liveness risk (**A7**).
 
 ## Decided
 
-Normative language follows RFC 2119. **F0** applies to every flow. **F1** and **F2** above are the Initialize and Attack specifications.
+Normative language follows RFC 2119. **F0** applies to every flow. **F1**, **F2**, and **F3** are the Initialize, Attack, and Settle specifications.
 
 ## Still open
 
 ### O1. Initialize wire details
 
-`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize; other dependent instructions besides that pair (for example account configure).
+`ApplyPendingBalance` immediately after `ConfidentialMint` is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize and other dependent instructions besides that pair, such as account configuration.
 
 ### O2. Close wire details
 
-Close is arbiter-constructed (**DEP4**, **D4**). The shared HP mint MUST NOT be closed with the instance (**DEP6**). Unspecified: the exact Token-2022 close and leftover-zero proof instructions besides `VerifyZeroCiphertext` bound to the HP vault; Register/Close sequence diagrams.
+Close is arbiter-constructed (**DEP4**, **D4**). The shared HP mint MUST NOT be closed with the instance (**DEP6**). Unspecified: exact Token-2022 close and leftover-zero proof instructions besides `VerifyZeroCiphertext` bound to the HP vault; Register/Close sequence diagrams.
+
+### O3. Pre-launch VRF wire flow
+
+Before launch, winner selection MUST use VRF or equivalent publicly verifiable, unpredictable randomness (**A8**). Provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding are undecided. An asynchronous design may commit a randomness request when striking closes rather than retain the prototype selected-index commitment. The flow also depends on whether the program must enforce index-to-attacker mapping on-chain or a publicly reproducible successful-Attack-history scan is sufficient ([arbiter.md](arbiter.md) **O2**). No wire flow is invented until those choices are made.

@@ -1,17 +1,19 @@
 # Docs
 
-Technical design for **Confidential Piñata**. Account layouts, proof bytes, and client code are out of scope until a later pass.
+Technical design for **Confidential Piñata**, a mystery-supply raffle. Each paid successful Attack strikes the piñata, burns 1 confidential HP, and assigns the attacking wallet the next index: 0 for the first successful strike, 1 for the second, and so on. When HP reaches zero, those indexes form the Drawing range: the more a player strikes, the more indexes they hold and the higher their odds of receiving the public reward. The Terminal Attack closes striking and stores a hidden selected-index commitment; a separate `Settle` reveals it, pays the assigned player, and sends the SOL pile to the GM.
+
+Account layouts, proof bytes, and client code are out of scope until a later pass.
 
 v1 **Decided** and **Still open** sit in the files below, not in the project README.
 
 ```mermaid
 flowchart LR
-  game[game.md<br/>loop and identity]
-  cb[confidential-balances.md<br/>what is encrypted]
+  game[game.md<br/>strike and Drawing loop]
+  cb[confidential-balances.md<br/>HP and visibility]
   dep[deployment.md<br/>who holds what]
-  prog[program.md<br/>on-chain rules]
-  arb[arbiter.md<br/>off-chain rules]
-  flows[flows.md<br/>wire sequences]
+  prog[program.md<br/>five instructions and settlement]
+  arb[arbiter.md<br/>prototype draw + launch VRF policy]
+  flows[flows.md<br/>F0–F3 wire sequences]
 
   game --> cb
   cb --> dep
@@ -32,11 +34,20 @@ flowchart LR
 
 | Doc | Owns | Still open |
 | --- | --- | --- |
-| [game.md](game.md) | Session loop, roles, prototype wallet identity, pre-launch SAS identity, reputation | Pre-launch SAS credential / person-id field |
-| [confidential-balances.md](confidential-balances.md) | HP vs reward visibility; Token-2022 HP mechanics | Optional mint auditor |
-| [deployment.md](deployment.md) | Participants, DEP1–DEP6, owner vs authority | Later HP bind to program (**O1**; not arbiter isolation **O1**) |
-| [program.md](program.md) | Initialize, Register, Attack, Close; D1–D4 | Instruction layouts |
-| [arbiter.md](arbiter.md) | Price, HP formula, keys, proofs; A1–A8 | Isolation enforcement (**O1**) |
-| [flows.md](flows.md) | F0–F2 sequences | Initialize proofs (**O1**); Close wire (**O2**) |
+| [game.md](game.md) | Mystery-supply strike and Drawing loop, player incentives, prototype wallet identity, pre-launch SAS identity, reputation | Pre-launch SAS credential / person-id field; points to winner-mapping question |
+| [confidential-balances.md](confidential-balances.md) | HP as the hidden Drawing range length; visibility; Token-2022 HP mechanics | Optional mint auditor |
+| [deployment.md](deployment.md) | Participants, state/escrow topology, DEP1–DEP6, owner versus authority | Later HP bind to program (**O1**; not arbiter isolation **O1**); VRF component awaits provider |
+| [program.md](program.md) | Five instructions—Initialize, Register, Attack, Settle, Close—and D1–D4 enforcement | Instruction, commitment, and account layouts; VRF-driven program changes |
+| [arbiter.md](arbiter.md) | Price, HP formula, public offset range, keys, proofs, prototype draw commitment, pre-launch winner VRF policy; A1–A8 | Isolation enforcement (**O1**); VRF lifecycle and index-to-attacker enforcement (**O2**) |
+| [flows.md](flows.md) | F0–F3: wallet/send, Initialize, Attack, Settle | Initialize proofs (**O1**); Close wire (**O2**); pre-launch VRF wire flow (**O3**) |
+
+## Cross-document Still open summary
+
+- Which SAS credential/schema and person-id field must the program compare before launch? ([game.md](game.md))
+- How is GM isolation from arbiter secrets enforced? ([arbiter.md](arbiter.md) **O1**)
+- Which VRF or equivalent provider, request/reveal lifecycle, state fields, transaction sequence, and fee-funding model replaces prototype raffle selection before launch? ([arbiter.md](arbiter.md) **O2**, [flows.md](flows.md) **O3**)
+- Must the program enforce the VRF-selected index-to-attacker mapping on-chain, or is a publicly reproducible successful-Attack-history scan with detectable arbiter dishonesty sufficient? ([arbiter.md](arbiter.md) **O2**)
+- How do later versions forbid out-of-band HP Token-2022 mutations? ([deployment.md](deployment.md) **O1**)
+- Which exact Initialize proofs and Close wire instructions are required? ([flows.md](flows.md) **O1**, **O2**)
 
 Back to the [project README](../README.md).

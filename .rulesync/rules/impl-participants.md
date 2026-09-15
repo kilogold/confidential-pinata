@@ -28,7 +28,7 @@ The Next app is a generic wallet dapp. The Anchor program is a personal SOL vaul
 
 # ✅ GOOD
 impl/app is the arbiter webapp (it hosts the program client). impl/anchor crate
-`pinata` is the Piñata program (Initialize, Register, Attack, Close — D1).
+`pinata` is the Piñata program (Initialize, Register, Attack, Settle, Close — D1).
 ```
 
 Do not implement deposit/withdraw-as-product. Do not split a second arbiter process. Point implementation notes at the owning `docs/*.md`; do not redefine **Decided**.
