@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { before, test } from "node:test";
 import {
   createClient,
+  createNoopSigner,
   generateKeyPairSigner,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
@@ -32,7 +33,7 @@ import {
 import { TOKEN_PROGRAM_ADDRESS } from "@/app/lib/constants";
 import { deriveArbiterKeys } from "@/app/lib/server/arbiter-keys";
 import { loadArbiterEnv } from "@/app/lib/server/env";
-import { buildPartialInitializeTransaction } from "@/app/lib/server/initialize/build";
+import { buildPartialInitializeTransactions } from "@/app/lib/server/initialize/build";
 import {
   generateInitializeProofs,
   hpVaultNeedsCreate,
@@ -110,9 +111,7 @@ let hpMint!: Address;
 let client!: ReturnType<typeof createAttachClient>;
 
 function createAttachClient(arbiterSigner: KeyPairSigner) {
-  return createClient()
-    .use(payer(arbiterSigner))
-    .use(surfpool({ rpcUrl }));
+  return createClient().use(payer(arbiterSigner)).use(surfpool({ rpcUrl }));
 }
 
 async function fundSol(address: Address, lamports: bigint): Promise<void> {
@@ -251,11 +250,15 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
   const [sessionPda] = await findSessionPda({ sessionId });
   const [hpVault] = await findHpVaultPda({ sessionId });
   const [rewardVault] = await findRewardVaultPda({ sessionId });
+  const arbiterBalanceBefore = await rpc
+    .getBalance(arbiter.signer.address)
+    .send();
 
   const needsVaultCreate = await hpVaultNeedsCreate(rpc, hpVault);
   const proofs = await generateInitializeProofs({
     rpc,
-    payer: arbiter.signer,
+    payer: createNoopSigner(gm.address),
+    authority: arbiter.signer,
     elgamal: arbiter.elgamal,
     aes: arbiter.aes,
     hpMint,
@@ -265,7 +268,7 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
     needsZeroProof: false,
   });
 
-  const partialWire = await buildPartialInitializeTransaction({
+  const prepared = await buildPartialInitializeTransactions({
     rpc,
     gm: gm.address,
     arbiter: arbiter.signer,
@@ -278,14 +281,41 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
     proofs,
   });
 
-  const txBytes = getBase64Encoder().encode(
-    partialWire as Base64EncodedWireTransaction
+  assert.ok(
+    prepared.transactions.length > 1,
+    "Initialize should require a sequence"
   );
-  const partialTx = getTransactionDecoder().decode(txBytes);
-  const signedTx = await signTransaction([gm.keyPair], partialTx);
-  const wire = getBase64EncodedWireTransaction(signedTx);
-  await rpc.sendTransaction(wire, { encoding: "base64" }).send();
-  await confirmSignature(getSignatureFromTransaction(signedTx));
+  for (const partialWire of prepared.transactions) {
+    const simulation = await rpc
+      .simulateTransaction(partialWire as Base64EncodedWireTransaction, {
+        encoding: "base64",
+        sigVerify: false,
+      })
+      .send();
+    assert.equal(
+      simulation.value.err,
+      null,
+      `Prepared transaction simulation failed: ${JSON.stringify(simulation.value.err)}`
+    );
+
+    const txBytes = getBase64Encoder().encode(
+      partialWire as Base64EncodedWireTransaction
+    );
+    const partialTx = getTransactionDecoder().decode(txBytes);
+    const signedTx = await signTransaction([gm.keyPair], partialTx);
+    const wire = getBase64EncodedWireTransaction(signedTx);
+    await rpc.sendTransaction(wire, { encoding: "base64" }).send();
+    await confirmSignature(getSignatureFromTransaction(signedTx));
+  }
+
+  const arbiterBalanceAfter = await rpc
+    .getBalance(arbiter.signer.address)
+    .send();
+  assert.equal(
+    arbiterBalanceAfter.value,
+    arbiterBalanceBefore.value,
+    "arbiter must not pay Initialize fees or proof-account rent"
+  );
 
   const session = await fetchSession(rpc, sessionPda);
   assert.equal(session.data.status, SessionStatus.Live);

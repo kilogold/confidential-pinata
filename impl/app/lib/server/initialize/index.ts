@@ -1,4 +1,4 @@
-import { isSome, type Address } from "@solana/kit";
+import { createNoopSigner, isSome, type Address } from "@solana/kit";
 import {
   fetchMint as fetchSplMint,
   fetchMaybeToken as fetchMaybeSplToken,
@@ -20,7 +20,10 @@ import {
 } from "@/app/lib/constants";
 import { deriveArbiterKeys } from "../arbiter-keys";
 import type { SolanaRpc } from "../rpc";
-import { buildPartialInitializeTransaction } from "./build";
+import {
+  buildPartialInitializeTransactions,
+  type PreparedInitializeTransactions,
+} from "./build";
 import { InitializeApiError } from "./errors";
 import { drawHp } from "./hp";
 import { quoteRewardInSol } from "./price";
@@ -31,9 +34,7 @@ import {
   parseStrikeFeeLamports,
 } from "./validate";
 
-export type InitializeSuccess = {
-  transaction: string;
-};
+export type InitializeSuccess = PreparedInitializeTransactions;
 
 async function rpcCall<T>(fn: () => Promise<T>): Promise<T> {
   try {
@@ -202,7 +203,8 @@ export async function orchestrateInitialize(
   try {
     proofs = await generateInitializeProofs({
       rpc,
-      payer: keys.signer,
+      payer: createNoopSigner(input.gm),
+      authority: keys.signer,
       elgamal: keys.elgamal,
       aes: keys.aes,
       hpMint: env.hpMint,
@@ -217,12 +219,12 @@ export async function orchestrateInitialize(
       "PROOF_SETUP_FAILED",
       err instanceof Error
         ? err.message
-        : "Could not generate or submit mint proofs",
+        : "Could not generate mint proofs or setup instructions",
       { status: 502 }
     );
   }
 
-  const transaction = await buildPartialInitializeTransaction({
+  return await buildPartialInitializeTransactions({
     rpc,
     gm: input.gm,
     arbiter: keys.signer,
@@ -234,6 +236,4 @@ export async function orchestrateInitialize(
     hpMint: env.hpMint,
     proofs,
   });
-
-  return { transaction };
 }

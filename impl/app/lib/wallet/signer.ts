@@ -16,15 +16,15 @@ function createSendingSigner(
     address: session.account.address,
     signAndSendTransactions: async (transactions) => {
       const encoder = getTransactionEncoder();
-      return Promise.all(
-        transactions.map(async (tx) => {
-          const wireBytes = new Uint8Array(
-            encoder.encode(tx as Parameters<(typeof encoder)["encode"]>[0])
-          );
-          const sigBytes = await session.sendTransaction!(wireBytes, chain);
-          return signatureBytes(sigBytes);
-        })
-      );
+      const signatures = [];
+      for (const tx of transactions) {
+        const wireBytes = new Uint8Array(
+          encoder.encode(tx as Parameters<(typeof encoder)["encode"]>[0])
+        );
+        const sigBytes = await session.sendTransaction!(wireBytes, chain);
+        signatures.push(signatureBytes(sigBytes));
+      }
+      return signatures;
     },
   };
 }
@@ -42,7 +42,6 @@ function createModifyingSigner(
 ): TransactionModifyingSigner {
   return {
     address: session.account.address,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     modifyAndSignTransactions: (async (transactions: readonly unknown[]) => {
       const encoder = getTransactionEncoder();
       const decoder = getTransactionDecoder();
@@ -76,11 +75,11 @@ export function createWalletSigner(
   session: WalletSession,
   chain: string
 ): TransactionSigner {
-  if (session.signTransaction) {
-    return createModifyingSigner(session, chain);
-  }
   if (session.sendTransaction) {
     return createSendingSigner(session, chain);
+  }
+  if (session.signTransaction) {
+    return createModifyingSigner(session, chain);
   }
   throw new Error("Wallet does not support transaction signing");
 }

@@ -2,11 +2,20 @@ import { ristretto255 } from "@noble/curves/ed25519";
 import {
   generateKeyPairSigner,
   isSome,
+  nonDivisibleSequentialInstructionPlan,
+  sequentialInstructionPlan,
   type Address,
   type Instruction,
+  type InstructionPlan,
   type KeyPairSigner,
   type TransactionSigner,
 } from "@solana/kit";
+import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
+import {
+  RECORD_META_DATA_SIZE,
+  getCreateRecordInstructionPlan,
+  getWriteInstructionPlan,
+} from "@solana-program/record";
 import {
   verifyBatchedGroupedCiphertext3HandlesValidity,
   verifyBatchedRangeProofU128,
@@ -34,10 +43,12 @@ import {
   fetchMaybeToken,
   type Extension,
 } from "@solana-program/token-2022";
-import { SYSTEM_PROGRAM_ADDRESS } from "@/app/lib/constants";
+import {
+  INITIALIZE_COMPUTE_UNIT_LIMIT,
+  SYSTEM_PROGRAM_ADDRESS,
+} from "@/app/lib/constants";
 import type { SolanaRpc } from "../rpc";
 import { InitializeApiError } from "./errors";
-import { sendAndConfirmInstructions } from "./send";
 
 const { Point: RistrettoPoint } = ristretto255;
 const TRANSFER_AMOUNT_LO_BIT_LENGTH = 16n;
@@ -45,6 +56,8 @@ const TRANSFER_AMOUNT_HI_BIT_LENGTH = 32n;
 const SUPPLY_BIT_LENGTH = 64;
 const RANGE_PROOF_PADDING_BIT_LENGTH = 16;
 const LARGE_PROOF_BYTES = 800;
+
+type ProofDataInput = Uint8Array | { account: Address; offset: number };
 
 export type MintProofAccounts = {
   equalityProof: Address;
@@ -58,6 +71,11 @@ export type MintProofAccounts = {
   mintAmountAuditorCiphertextHi: Uint8Array;
   expectedPendingBalanceCreditCounter: bigint;
   newDecryptableAvailableBalance: Uint8Array;
+};
+
+export type GeneratedInitializeProofs = {
+  accounts: MintProofAccounts;
+  instructionPlan: InstructionPlan;
 };
 
 function pointFromBytes(bytes: Uint8Array) {
@@ -164,65 +182,77 @@ function proofOrThrow<T>(label: string, fn: () => T): T {
   }
 }
 
-async function sendProofVerify(args: {
-  rpc: SolanaRpc;
-  payer: TransactionSigner;
-  instructions: Instruction[];
-}): Promise<void> {
-  const { rpc, payer, instructions } = args;
-  if (instructions.length <= 1) {
-    await sendAndConfirmInstructions(rpc, payer, instructions);
-    return;
-  }
-  try {
-    await sendAndConfirmInstructions(rpc, payer, instructions);
-  } catch (err) {
-    if (err instanceof InitializeApiError) {
-      for (const ix of instructions) {
-        await sendAndConfirmInstructions(rpc, payer, [ix]);
-      }
-      return;
-    }
-    throw err;
-  }
-}
-
 async function verifyIntoContext(args: {
   rpc: SolanaRpc;
-  payer: KeyPairSigner;
+  payer: TransactionSigner;
+  authority: TransactionSigner;
   proofBytes: Uint8Array;
   verify: (input: {
     rpc: SolanaRpc;
-    payer: KeyPairSigner;
-    proofData: Uint8Array;
+    payer: TransactionSigner;
+    proofData: ProofDataInput;
     contextState: { contextAccount: KeyPairSigner; authority: Address };
   }) => Promise<Instruction[]>;
-}): Promise<Address> {
+}): Promise<{ address: Address; instructionPlan: InstructionPlan }> {
   const contextAccount = await generateKeyPairSigner();
+  if (args.proofBytes.length > LARGE_PROOF_BYTES) {
+    const recordAccount = await generateKeyPairSigner();
+    const createRecordPlan = await getCreateRecordInstructionPlan(
+      {
+        getMinimumBalance: (space) =>
+          args.rpc.getMinimumBalanceForRentExemption(BigInt(space)).send(),
+      },
+      {
+        payer: args.payer,
+        newRecord: recordAccount,
+        authority: args.authority.address,
+        dataLength: BigInt(args.proofBytes.length),
+      }
+    );
+    const verifyInstructions = await args.verify({
+      rpc: args.rpc,
+      payer: args.payer,
+      proofData: {
+        account: recordAccount.address,
+        offset: Number(RECORD_META_DATA_SIZE),
+      },
+      contextState: {
+        contextAccount,
+        authority: args.authority.address,
+      },
+    });
+    return {
+      address: contextAccount.address,
+      instructionPlan: sequentialInstructionPlan([
+        createRecordPlan,
+        getWriteInstructionPlan({
+          recordAccount: recordAccount.address,
+          authority: args.authority,
+          data: args.proofBytes,
+        }),
+        nonDivisibleSequentialInstructionPlan([
+          getSetComputeUnitLimitInstruction({
+            units: INITIALIZE_COMPUTE_UNIT_LIMIT,
+          }),
+          ...verifyInstructions,
+        ]),
+      ]),
+    };
+  }
+
   const instructions = await args.verify({
     rpc: args.rpc,
     payer: args.payer,
     proofData: args.proofBytes,
     contextState: {
       contextAccount,
-      authority: args.payer.address,
+      authority: args.authority.address,
     },
   });
-  if (args.proofBytes.length > LARGE_PROOF_BYTES && instructions.length > 1) {
-    await sendAndConfirmInstructions(args.rpc, args.payer, [instructions[0]!]);
-    await sendAndConfirmInstructions(
-      args.rpc,
-      args.payer,
-      instructions.slice(1)
-    );
-  } else {
-    await sendProofVerify({
-      rpc: args.rpc,
-      payer: args.payer,
-      instructions,
-    });
-  }
-  return contextAccount.address;
+  return {
+    address: contextAccount.address,
+    instructionPlan: sequentialInstructionPlan(instructions),
+  };
 }
 
 export async function hpVaultNeedsCreate(
@@ -248,7 +278,8 @@ export async function hpVaultNeedsCreate(
 
 export async function generateInitializeProofs(args: {
   rpc: SolanaRpc;
-  payer: KeyPairSigner;
+  payer: TransactionSigner;
+  authority: TransactionSigner;
   elgamal: ElGamalKeypair;
   aes: AeKey;
   hpMint: Address;
@@ -256,7 +287,7 @@ export async function generateInitializeProofs(args: {
   hp: bigint;
   needsVaultCreate: boolean;
   needsZeroProof: boolean;
-}): Promise<MintProofAccounts> {
+}): Promise<GeneratedInitializeProofs> {
   const mintAccount = await fetchMint(args.rpc, args.hpMint);
   const mintExtensions = isSome(mintAccount.data.extensions)
     ? mintAccount.data.extensions.value
@@ -409,34 +440,40 @@ export async function generateInitializeProofs(args: {
   const equalityProof = await verifyIntoContext({
     rpc: args.rpc,
     payer: args.payer,
+    authority: args.authority,
     proofBytes: equality.toBytes(),
     verify: verifyCiphertextCommitmentEquality,
   });
   const ciphertextValidityProof = await verifyIntoContext({
     rpc: args.rpc,
     payer: args.payer,
+    authority: args.authority,
     proofBytes: validity.toBytes(),
     verify: verifyBatchedGroupedCiphertext3HandlesValidity,
   });
   const rangeProof = await verifyIntoContext({
     rpc: args.rpc,
     payer: args.payer,
+    authority: args.authority,
     proofBytes: range.toBytes(),
     verify: verifyBatchedRangeProofU128,
   });
 
-  let pubkeyValidityProof: Address | undefined;
+  let pubkeyValidityProof:
+    { address: Address; instructionPlan: InstructionPlan } | undefined;
   if (args.needsVaultCreate) {
     const pubkeyProof = new PubkeyValidityProofData(args.elgamal);
     pubkeyValidityProof = await verifyIntoContext({
       rpc: args.rpc,
       payer: args.payer,
+      authority: args.authority,
       proofBytes: pubkeyProof.toBytes(),
       verify: verifyPubkeyValidity,
     });
   }
 
-  let zeroProof: Address | undefined;
+  let zeroProof:
+    { address: Address; instructionPlan: InstructionPlan } | undefined;
   if (args.needsZeroProof) {
     if (!vaultToken.exists) {
       throw new InitializeApiError(
@@ -464,6 +501,7 @@ export async function generateInitializeProofs(args: {
     zeroProof = await verifyIntoContext({
       rpc: args.rpc,
       payer: args.payer,
+      authority: args.authority,
       proofBytes: zero.toBytes(),
       verify: verifyZeroCiphertext,
     });
@@ -472,16 +510,25 @@ export async function generateInitializeProofs(args: {
   const newAvailable = currentAvailable + args.hp;
 
   return {
-    equalityProof,
-    ciphertextValidityProof,
-    rangeProof,
-    pubkeyValidityProof,
-    zeroProof,
-    decryptableZero: args.aes.encrypt(0n).toBytes(),
-    newDecryptableSupply: args.aes.encrypt(newSupplyAmount).toBytes(),
-    mintAmountAuditorCiphertextLo: auditorLo,
-    mintAmountAuditorCiphertextHi: auditorHi,
-    expectedPendingBalanceCreditCounter: expectedPending,
-    newDecryptableAvailableBalance: args.aes.encrypt(newAvailable).toBytes(),
+    accounts: {
+      equalityProof: equalityProof.address,
+      ciphertextValidityProof: ciphertextValidityProof.address,
+      rangeProof: rangeProof.address,
+      pubkeyValidityProof: pubkeyValidityProof?.address,
+      zeroProof: zeroProof?.address,
+      decryptableZero: args.aes.encrypt(0n).toBytes(),
+      newDecryptableSupply: args.aes.encrypt(newSupplyAmount).toBytes(),
+      mintAmountAuditorCiphertextLo: auditorLo,
+      mintAmountAuditorCiphertextHi: auditorHi,
+      expectedPendingBalanceCreditCounter: expectedPending,
+      newDecryptableAvailableBalance: args.aes.encrypt(newAvailable).toBytes(),
+    },
+    instructionPlan: sequentialInstructionPlan([
+      equalityProof.instructionPlan,
+      ciphertextValidityProof.instructionPlan,
+      rangeProof.instructionPlan,
+      ...(pubkeyValidityProof ? [pubkeyValidityProof.instructionPlan] : []),
+      ...(zeroProof ? [zeroProof.instructionPlan] : []),
+    ]),
   };
 }

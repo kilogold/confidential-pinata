@@ -20,6 +20,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 
 - **Landing** — Game Master (Init, Close) and Player (Register, Strike) actions
 - **Wallet connection** via wallet-standard with auto-discovery and dropdown UI
+- **Sequential Initialize submission** — the backend returns GM-funded, partially signed proof-setup transactions followed by Initialize; the wallet simulates, sends, and confirms each transaction in order
 - **Cluster switching** — devnet, testnet, mainnet, and localnet from the header
 - **Toast notifications** with explorer links for every transaction
 - **Error handling** — human-readable messages for common Solana and program errors
@@ -56,7 +57,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 │   │   │   └── context.tsx     # WalletProvider + useWallet() hook
 │   │   ├── hooks/
 │   │   │   ├── use-balance.ts  # SWR-based balance fetching
-│   │   │   └── use-send-transaction.ts  # Transaction send with loading state
+│   │   │   └── use-sign-and-send-partial-transactions.ts  # Ordered F0 wallet submission
 │   │   ├── cluster.ts          # Cluster endpoints + RPC factory
 │   │   ├── lamports.ts         # SOL/lamports conversion
 │   │   ├── send-transaction.ts # Transaction build + sign + send pipeline
@@ -69,6 +70,17 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 ```
 
 ## Local Development
+
+The Initialize API returns an ordered prepared sequence:
+
+```ts
+{
+  transactions: string[];
+  lastValidBlockHeight: string;
+}
+```
+
+Every transaction is already partially signed by its available backend signers. The connected GM wallet remains the fee payer and submits the original serialized bytes through Wallet Standard. If the sequence stops after some proof transactions confirm, v1 reports the partial completion but does not clean up or resume the GM-funded proof-context or proof-data record accounts; that requirement remains open in [flows.md](../docs/flows.md) **O1**.
 
 To test against a local validator instead of devnet:
 

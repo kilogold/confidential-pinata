@@ -1,10 +1,14 @@
 import {
-  appendTransactionMessageInstructions,
+  assertIsTransactionWithinSizeLimit,
   createNoopSigner,
   createTransactionMessage,
+  createTransactionPlanner,
+  flattenTransactionPlan,
   getBase64EncodedWireTransaction,
+  nonDivisibleSequentialInstructionPlan,
   partiallySignTransactionMessageWithSigners,
   pipe,
+  sequentialInstructionPlan,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   type Address,
@@ -16,9 +20,14 @@ import { getInitializeInstructionAsync } from "@/app/generated/pinata";
 import { INITIALIZE_COMPUTE_UNIT_LIMIT } from "@/app/lib/constants";
 import type { SolanaRpc } from "../rpc";
 import { InitializeApiError } from "./errors";
-import type { MintProofAccounts } from "./proofs";
+import type { GeneratedInitializeProofs } from "./proofs";
 
-export async function buildPartialInitializeTransaction(args: {
+export type PreparedInitializeTransactions = {
+  transactions: string[];
+  lastValidBlockHeight: string;
+};
+
+export async function buildPartialInitializeTransactions(args: {
   rpc: SolanaRpc;
   gm: Address;
   arbiter: KeyPairSigner;
@@ -28,8 +37,8 @@ export async function buildPartialInitializeTransaction(args: {
   rewardMint: Address;
   rewardTokenProgram: Address;
   hpMint: Address;
-  proofs: MintProofAccounts;
-}): Promise<string> {
+  proofs: GeneratedInitializeProofs;
+}): Promise<PreparedInitializeTransactions> {
   const [rewardSource] = await findAssociatedTokenPda({
     owner: args.gm,
     tokenProgram: args.rewardTokenProgram,
@@ -47,23 +56,50 @@ export async function buildPartialInitializeTransaction(args: {
     sessionId: args.sessionId,
     strikeFeeLamports: args.strikeFeeLamports,
     rewardAmount: args.rewardAmount,
-    equalityProof: args.proofs.equalityProof,
-    ciphertextValidityProof: args.proofs.ciphertextValidityProof,
-    rangeProof: args.proofs.rangeProof,
-    pubkeyValidityProof: args.proofs.pubkeyValidityProof,
-    zeroProof: args.proofs.zeroProof,
-    decryptableZero: args.proofs.decryptableZero,
-    newDecryptableSupply: args.proofs.newDecryptableSupply,
-    mintAmountAuditorCiphertextLo: args.proofs.mintAmountAuditorCiphertextLo,
-    mintAmountAuditorCiphertextHi: args.proofs.mintAmountAuditorCiphertextHi,
+    equalityProof: args.proofs.accounts.equalityProof,
+    ciphertextValidityProof: args.proofs.accounts.ciphertextValidityProof,
+    rangeProof: args.proofs.accounts.rangeProof,
+    pubkeyValidityProof: args.proofs.accounts.pubkeyValidityProof,
+    zeroProof: args.proofs.accounts.zeroProof,
+    decryptableZero: args.proofs.accounts.decryptableZero,
+    newDecryptableSupply: args.proofs.accounts.newDecryptableSupply,
+    mintAmountAuditorCiphertextLo:
+      args.proofs.accounts.mintAmountAuditorCiphertextLo,
+    mintAmountAuditorCiphertextHi:
+      args.proofs.accounts.mintAmountAuditorCiphertextHi,
     expectedPendingBalanceCreditCounter:
-      args.proofs.expectedPendingBalanceCreditCounter,
-    newDecryptableAvailableBalance: args.proofs.newDecryptableAvailableBalance,
+      args.proofs.accounts.expectedPendingBalanceCreditCounter,
+    newDecryptableAvailableBalance:
+      args.proofs.accounts.newDecryptableAvailableBalance,
   });
 
-  const cuIx = getSetComputeUnitLimitInstruction({
+  const computeUnitIx = getSetComputeUnitLimitInstruction({
     units: INITIALIZE_COMPUTE_UNIT_LIMIT,
   });
+
+  const instructionPlan = sequentialInstructionPlan([
+    args.proofs.instructionPlan,
+    nonDivisibleSequentialInstructionPlan([computeUnitIx, initializeIx]),
+  ]);
+
+  let transactionPlan;
+  try {
+    const planner = createTransactionPlanner({
+      createTransactionMessage: () =>
+        pipe(createTransactionMessage({ version: 0 }), (message) =>
+          setTransactionMessageFeePayerSigner(gmSigner, message)
+        ),
+    });
+    transactionPlan = await planner(instructionPlan);
+  } catch (err) {
+    throw new InitializeApiError(
+      "TRANSACTION_BUILD_FAILED",
+      err instanceof Error
+        ? err.message
+        : "Failed to plan Initialize transactions",
+      { status: 500 }
+    );
+  }
 
   let blockhash;
   try {
@@ -76,56 +112,40 @@ export async function buildPartialInitializeTransaction(args: {
     );
   }
 
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(gmSigner, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
-    (m) => appendTransactionMessageInstructions([cuIx, initializeIx], m)
-  );
-
-  let partial;
+  let transactions: string[];
   try {
-    partial = await partiallySignTransactionMessageWithSigners(message);
+    transactions = await Promise.all(
+      flattenTransactionPlan(transactionPlan).map(async ({ message }) => {
+        const messageWithLifetime = setTransactionMessageLifetimeUsingBlockhash(
+          blockhash,
+          message
+        );
+        const partial =
+          await partiallySignTransactionMessageWithSigners(messageWithLifetime);
+        assertIsTransactionWithinSizeLimit(partial);
+        return getBase64EncodedWireTransaction(partial);
+      })
+    );
   } catch (err) {
     throw new InitializeApiError(
       "TRANSACTION_BUILD_FAILED",
-      err instanceof Error ? err.message : "Failed to partial-sign Initialize",
+      err instanceof Error
+        ? err.message
+        : "Failed to partial-sign Initialize transactions",
       { status: 500 }
     );
   }
 
-  const wire = getBase64EncodedWireTransaction(partial);
-
-  try {
-    const sim = await args.rpc
-      .simulateTransaction(wire, {
-        encoding: "base64",
-        sigVerify: false,
-        replaceRecentBlockhash: true,
-      })
-      .send();
-    if (sim.value.err) {
-      const logs = sim.value.logs?.join("\n") ?? "";
-      const errDetail =
-        typeof sim.value.err === "string"
-          ? sim.value.err
-          : JSON.stringify(sim.value.err);
-      throw new InitializeApiError(
-        "SIMULATION_FAILED",
-        logs.length > 0
-          ? `Initialize simulation failed (${errDetail}): ${logs.slice(-500)}`
-          : `Initialize simulation failed: ${errDetail}`,
-        { status: 400 }
-      );
-    }
-  } catch (err) {
-    if (err instanceof InitializeApiError) throw err;
+  if (transactions.length === 0) {
     throw new InitializeApiError(
-      "SIMULATION_FAILED",
-      err instanceof Error ? err.message : "Initialize simulation failed",
-      { status: 400 }
+      "TRANSACTION_BUILD_FAILED",
+      "Initialize transaction plan was empty",
+      { status: 500 }
     );
   }
 
-  return wire;
+  return {
+    transactions,
+    lastValidBlockHeight: blockhash.lastValidBlockHeight.toString(),
+  };
 }

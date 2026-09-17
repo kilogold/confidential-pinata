@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useWallet } from "../lib/wallet/context";
-import { useSignAndSendPartialTransaction } from "../lib/hooks/use-sign-and-send-partial-transaction";
+import {
+  parsePreparedTransactionSequence,
+  useSignAndSendPartialTransactions,
+} from "../lib/hooks/use-sign-and-send-partial-transactions";
 
 type InitializeErrorBody = {
   error?: {
@@ -13,13 +16,10 @@ type InitializeErrorBody = {
   };
 };
 
-type InitializeSuccessBody = {
-  transaction?: string;
-};
-
 export function GmInitialize({ enabled }: { enabled: boolean }) {
   const { wallet } = useWallet();
-  const { signAndSend, isSending } = useSignAndSendPartialTransaction();
+  const { signAndSend, isSending, progress } =
+    useSignAndSendPartialTransactions();
   const [rewardMint, setRewardMint] = useState("");
   const [rewardAmount, setRewardAmount] = useState("");
   const [strikeFeeSol, setStrikeFeeSol] = useState("");
@@ -49,13 +49,9 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
         toast.error(err.error?.message ?? "Initialize failed");
         return;
       }
-      const transaction = (json as InitializeSuccessBody).transaction;
-      if (typeof transaction !== "string") {
-        toast.error("Initialize did not return a transaction");
-        return;
-      }
-      await signAndSend(transaction);
-      toast.success("Initialize submitted");
+      const sequence = parsePreparedTransactionSequence(json);
+      await signAndSend(sequence);
+      toast.success("Initialize confirmed");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Initialize failed");
     } finally {
@@ -110,11 +106,15 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
       </label>
       <button
         type="button"
-        disabled={!enabled}
+        disabled={!enabled || busy}
         onClick={() => void onInitialize()}
         className="rounded-lg border border-neutral-400 bg-card px-5 py-2.5 text-sm font-medium shadow-xs transition enabled:hover:border-neutral-600 enabled:hover:bg-cream disabled:pointer-events-none dark:border-neutral-600 dark:enabled:hover:border-neutral-500"
       >
-        {busy ? "Initializing…" : "Initialize"}
+        {progress
+          ? `Initializing ${progress.current}/${progress.total}…`
+          : busy
+            ? "Initializing…"
+            : "Initialize"}
       </button>
     </div>
   );

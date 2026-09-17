@@ -184,6 +184,8 @@ Normative language follows RFC 2119. **F0** applies to every flow. **F1**, **F2*
 
 The `ConfidentialMint` CPI followed immediately by the `ApplyPendingBalance` CPI is specified in **F1**. HP ElGamal, HP AES, mint authority, and vault authority are reused (**A2**); vault and supply MUST share that ElGamal pubkey and AES, derived from the env authority keypair. Still unspecified: which ElGamal proof kinds are attached at Initialize and other dependent operations besides that CPI pair, such as account configuration.
 
+Initialize proof setup and the final Initialize transaction form a fail-stop sequence, not an atomic unit. If a GM submits some proof-setup transactions and then abandons the sequence, GM-funded proof-context and proof-data record accounts can remain on chain. Cleanup or resumption of that partial sequence is required for a future design but remains unspecified and out of scope for prototype v1; v1 MUST report partial completion and MUST NOT claim that those accounts were cleaned up automatically.
+
 ### O2. Close wire details
 
 Close is arbiter-constructed (**DEP4**, **D4**). The shared HP mint MUST NOT be closed with the instance (**DEP6**). Unspecified: exact Token-2022 close and leftover-zero proof instructions besides `VerifyZeroCiphertext` bound to the HP vault; Register/Close sequence diagrams.
