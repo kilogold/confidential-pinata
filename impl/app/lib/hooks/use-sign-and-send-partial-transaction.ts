@@ -24,6 +24,16 @@ export type TransactionProgress = {
   phase: "awaiting-wallet" | "confirming";
 };
 
+function getTransactionDebugInfo(bytes: Uint8Array) {
+  return {
+    byteLength: bytes.byteLength,
+    firstBytes: Array.from(bytes.slice(0, 16), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join(" "),
+    versionPrefix: `0x${(bytes[0] ?? 0).toString(16).padStart(2, "0")}`,
+  };
+}
+
 function decodeBase64Transaction(value: string): Uint8Array {
   let binary: string;
   try {
@@ -66,8 +76,13 @@ export function parsePreparedTransaction(value: unknown): PreparedTransaction {
   ) {
     throw new Error("Initialize returned an invalid transaction");
   }
-  decodeBase64Transaction(candidate.transaction);
+  const bytes = decodeBase64Transaction(candidate.transaction);
   parseLastValidBlockHeight(candidate.lastValidBlockHeight);
+  console.info("Received prepared Initialize transaction", {
+    base64Length: candidate.transaction.length,
+    lastValidBlockHeight: candidate.lastValidBlockHeight,
+    ...getTransactionDebugInfo(bytes),
+  });
   return {
     transaction: candidate.transaction,
     lastValidBlockHeight: candidate.lastValidBlockHeight,
@@ -106,6 +121,11 @@ export function useSignAndSendPartialTransaction() {
         }
 
         setProgress({ phase: "awaiting-wallet" });
+        console.info("Submitting prepared Initialize transaction to wallet", {
+          chain,
+          lastValidBlockHeight: lastValidBlockHeight.toString(),
+          ...getTransactionDebugInfo(bytes),
+        });
         const signatureBytes = await wallet.sendTransaction(bytes, chain);
         const transactionSignature = signature(
           getBase58Decoder().decode(signatureBytes)
