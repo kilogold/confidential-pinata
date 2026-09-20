@@ -20,7 +20,7 @@ export type HpVaultSeeds = {
 
 export async function findHpVaultPda(
   seeds: HpVaultSeeds,
-  config: { programAddress?: Address | undefined } = {},
+  config: { programAddress?: Address | undefined } = {}
 ): Promise<ProgramDerivedAddress> {
   const {
     programAddress = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">,
@@ -29,7 +29,7 @@ export async function findHpVaultPda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(
-        new Uint8Array([104, 112, 95, 118, 97, 117, 108, 116]),
+        new Uint8Array([104, 112, 95, 118, 97, 117, 108, 116])
       ),
       getUtf8Encoder().encode(seeds.sessionId),
     ],

@@ -1,27 +1,15 @@
-import { ristretto255 } from "@noble/curves/ed25519";
+import { ristretto255 } from "@noble/curves/ed25519.js";
 import {
-  generateKeyPairSigner,
   isSome,
-  nonDivisibleSequentialInstructionPlan,
-  sequentialInstructionPlan,
   type Address,
   type Instruction,
-  type InstructionPlan,
-  type KeyPairSigner,
   type TransactionSigner,
 } from "@solana/kit";
-import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
-import {
-  RECORD_META_DATA_SIZE,
-  getCreateRecordInstructionPlan,
-  getWriteInstructionPlan,
-} from "@solana-program/record";
 import {
   verifyBatchedGroupedCiphertext3HandlesValidity,
   verifyBatchedRangeProofU128,
   verifyCiphertextCommitmentEquality,
   verifyPubkeyValidity,
-  verifyZeroCiphertext,
 } from "@solana-program/zk-elgamal-proof";
 import {
   AeCiphertext,
@@ -36,17 +24,13 @@ import {
   PedersenCommitment,
   PedersenOpening,
   PubkeyValidityProofData,
-  ZeroCiphertextProofData,
 } from "@solana/zk-sdk/node";
 import {
   fetchMint,
   fetchMaybeToken,
   type Extension,
 } from "@solana-program/token-2022";
-import {
-  INITIALIZE_COMPUTE_UNIT_LIMIT,
-  SYSTEM_PROGRAM_ADDRESS,
-} from "@/app/lib/constants";
+import { SYSTEM_PROGRAM_ADDRESS } from "@/app/lib/constants";
 import type { SolanaRpc } from "../rpc";
 import { InitializeApiError } from "./errors";
 
@@ -55,16 +39,7 @@ const TRANSFER_AMOUNT_LO_BIT_LENGTH = 16n;
 const TRANSFER_AMOUNT_HI_BIT_LENGTH = 32n;
 const SUPPLY_BIT_LENGTH = 64;
 const RANGE_PROOF_PADDING_BIT_LENGTH = 16;
-const LARGE_PROOF_BYTES = 800;
-
-type ProofDataInput = Uint8Array | { account: Address; offset: number };
-
-export type MintProofAccounts = {
-  equalityProof: Address;
-  ciphertextValidityProof: Address;
-  rangeProof: Address;
-  pubkeyValidityProof?: Address;
-  zeroProof?: Address;
+export type MintProofData = {
   decryptableZero: Uint8Array;
   newDecryptableSupply: Uint8Array;
   mintAmountAuditorCiphertextLo: Uint8Array;
@@ -74,12 +49,18 @@ export type MintProofAccounts = {
 };
 
 export type GeneratedInitializeProofs = {
-  accounts: MintProofAccounts;
-  instructionPlan: InstructionPlan;
+  instructions: Instruction[];
+  offsets: {
+    pubkeyValidity: number;
+    equality: number;
+    ciphertextValidity: number;
+    range: number;
+  };
+  data: MintProofData;
 };
 
 function pointFromBytes(bytes: Uint8Array) {
-  return RistrettoPoint.fromHex(bytes);
+  return RistrettoPoint.fromBytes(bytes);
 }
 
 function ciphertextToPoints(ciphertext: Uint8Array) {
@@ -94,8 +75,8 @@ function pointsToCiphertext(
   handle: ReturnType<typeof pointFromBytes>
 ): Uint8Array {
   const ciphertext = new Uint8Array(64);
-  ciphertext.set(commitment.toRawBytes(), 0);
-  ciphertext.set(handle.toRawBytes(), 32);
+  ciphertext.set(commitment.toBytes(), 0);
+  ciphertext.set(handle.toBytes(), 32);
   return ciphertext;
 }
 
@@ -182,77 +163,30 @@ function proofOrThrow<T>(label: string, fn: () => T): T {
   }
 }
 
-async function verifyIntoContext(args: {
+async function inlineProofInstruction(args: {
   rpc: SolanaRpc;
   payer: TransactionSigner;
-  authority: TransactionSigner;
+  label: string;
   proofBytes: Uint8Array;
   verify: (input: {
     rpc: SolanaRpc;
     payer: TransactionSigner;
-    proofData: ProofDataInput;
-    contextState: { contextAccount: KeyPairSigner; authority: Address };
+    proofData: Uint8Array;
   }) => Promise<Instruction[]>;
-}): Promise<{ address: Address; instructionPlan: InstructionPlan }> {
-  const contextAccount = await generateKeyPairSigner();
-  if (args.proofBytes.length > LARGE_PROOF_BYTES) {
-    const recordAccount = await generateKeyPairSigner();
-    const createRecordPlan = await getCreateRecordInstructionPlan(
-      {
-        getMinimumBalance: (space) =>
-          args.rpc.getMinimumBalanceForRentExemption(BigInt(space)).send(),
-      },
-      {
-        payer: args.payer,
-        newRecord: recordAccount,
-        authority: args.authority.address,
-        dataLength: BigInt(args.proofBytes.length),
-      }
-    );
-    const verifyInstructions = await args.verify({
-      rpc: args.rpc,
-      payer: args.payer,
-      proofData: {
-        account: recordAccount.address,
-        offset: Number(RECORD_META_DATA_SIZE),
-      },
-      contextState: {
-        contextAccount,
-        authority: args.authority.address,
-      },
-    });
-    return {
-      address: contextAccount.address,
-      instructionPlan: sequentialInstructionPlan([
-        createRecordPlan,
-        getWriteInstructionPlan({
-          recordAccount: recordAccount.address,
-          authority: args.authority,
-          data: args.proofBytes,
-        }),
-        nonDivisibleSequentialInstructionPlan([
-          getSetComputeUnitLimitInstruction({
-            units: INITIALIZE_COMPUTE_UNIT_LIMIT,
-          }),
-          ...verifyInstructions,
-        ]),
-      ]),
-    };
-  }
-
+}): Promise<Instruction> {
   const instructions = await args.verify({
     rpc: args.rpc,
     payer: args.payer,
     proofData: args.proofBytes,
-    contextState: {
-      contextAccount,
-      authority: args.authority.address,
-    },
   });
-  return {
-    address: contextAccount.address,
-    instructionPlan: sequentialInstructionPlan(instructions),
-  };
+  if (instructions.length !== 1) {
+    throw new InitializeApiError(
+      "PROOF_SETUP_FAILED",
+      `Expected one inline ${args.label} proof instruction, received ${instructions.length}`,
+      { status: 500 }
+    );
+  }
+  return instructions[0]!;
 }
 
 export async function hpVaultNeedsCreate(
@@ -279,14 +213,12 @@ export async function hpVaultNeedsCreate(
 export async function generateInitializeProofs(args: {
   rpc: SolanaRpc;
   payer: TransactionSigner;
-  authority: TransactionSigner;
   elgamal: ElGamalKeypair;
   aes: AeKey;
   hpMint: Address;
   hpVault: Address;
   hp: bigint;
   needsVaultCreate: boolean;
-  needsZeroProof: boolean;
 }): Promise<GeneratedInitializeProofs> {
   const mintAccount = await fetchMint(args.rpc, args.hpMint);
   const mintExtensions = isSome(mintAccount.data.extensions)
@@ -437,85 +369,59 @@ export async function generateInitializeProofs(args: {
       )
   );
 
-  const equalityProof = await verifyIntoContext({
+  const equalityProof = await inlineProofInstruction({
     rpc: args.rpc,
     payer: args.payer,
-    authority: args.authority,
+    label: "equality",
     proofBytes: equality.toBytes(),
     verify: verifyCiphertextCommitmentEquality,
   });
-  const ciphertextValidityProof = await verifyIntoContext({
+  const ciphertextValidityProof = await inlineProofInstruction({
     rpc: args.rpc,
     payer: args.payer,
-    authority: args.authority,
+    label: "ciphertext-validity",
     proofBytes: validity.toBytes(),
     verify: verifyBatchedGroupedCiphertext3HandlesValidity,
   });
-  const rangeProof = await verifyIntoContext({
+  const rangeProof = await inlineProofInstruction({
     rpc: args.rpc,
     payer: args.payer,
-    authority: args.authority,
+    label: "range",
     proofBytes: range.toBytes(),
     verify: verifyBatchedRangeProofU128,
   });
 
-  let pubkeyValidityProof:
-    { address: Address; instructionPlan: InstructionPlan } | undefined;
+  let pubkeyValidityProof: Instruction | undefined;
   if (args.needsVaultCreate) {
     const pubkeyProof = new PubkeyValidityProofData(args.elgamal);
-    pubkeyValidityProof = await verifyIntoContext({
+    pubkeyValidityProof = await inlineProofInstruction({
       rpc: args.rpc,
       payer: args.payer,
-      authority: args.authority,
+      label: "pubkey-validity",
       proofBytes: pubkeyProof.toBytes(),
       verify: verifyPubkeyValidity,
     });
   }
 
-  let zeroProof:
-    { address: Address; instructionPlan: InstructionPlan } | undefined;
-  if (args.needsZeroProof) {
-    if (!vaultToken.exists) {
-      throw new InitializeApiError(
-        "HP_MINT_MISCONFIGURED",
-        "Zero leftover proof required but the HP vault does not exist",
-        { status: 400 }
-      );
-    }
-    const ext = isSome(vaultToken.data.extensions)
-      ? vaultToken.data.extensions.value.find(
-          (candidate) => candidate.__kind === "ConfidentialTransferAccount"
-        )
-      : undefined;
-    if (!ext || ext.__kind !== "ConfidentialTransferAccount") {
-      throw new InitializeApiError(
-        "HP_MINT_MISCONFIGURED",
-        "HP vault is missing ConfidentialTransferAccount",
-        { status: 400 }
-      );
-    }
-    const leftover = parseElGamalCiphertext(
-      new Uint8Array(ext.availableBalance)
-    );
-    const zero = new ZeroCiphertextProofData(args.elgamal, leftover);
-    zeroProof = await verifyIntoContext({
-      rpc: args.rpc,
-      payer: args.payer,
-      authority: args.authority,
-      proofBytes: zero.toBytes(),
-      verify: verifyZeroCiphertext,
-    });
-  }
-
   const newAvailable = currentAvailable + args.hp;
+  const instructions = [
+    ...(pubkeyValidityProof ? [pubkeyValidityProof] : []),
+    equalityProof,
+    ciphertextValidityProof,
+    rangeProof,
+  ];
+  const initializeIndex = instructions.length;
+  const equalityIndex = pubkeyValidityProof ? 1 : 0;
 
   return {
-    accounts: {
-      equalityProof: equalityProof.address,
-      ciphertextValidityProof: ciphertextValidityProof.address,
-      rangeProof: rangeProof.address,
-      pubkeyValidityProof: pubkeyValidityProof?.address,
-      zeroProof: zeroProof?.address,
+    instructions,
+    offsets: {
+      pubkeyValidity: pubkeyValidityProof ? -initializeIndex : 0,
+      equality: equalityIndex - initializeIndex,
+      ciphertextValidity: equalityIndex + 1 - initializeIndex,
+      range: equalityIndex + 2 - initializeIndex,
+    },
+    data: {
       decryptableZero: args.aes.encrypt(0n).toBytes(),
       newDecryptableSupply: args.aes.encrypt(newSupplyAmount).toBytes(),
       mintAmountAuditorCiphertextLo: auditorLo,
@@ -523,12 +429,5 @@ export async function generateInitializeProofs(args: {
       expectedPendingBalanceCreditCounter: expectedPending,
       newDecryptableAvailableBalance: args.aes.encrypt(newAvailable).toBytes(),
     },
-    instructionPlan: sequentialInstructionPlan([
-      equalityProof.instructionPlan,
-      ciphertextValidityProof.instructionPlan,
-      rangeProof.instructionPlan,
-      ...(pubkeyValidityProof ? [pubkeyValidityProof.instructionPlan] : []),
-      ...(zeroProof ? [zeroProof.instructionPlan] : []),
-    ]),
   };
 }

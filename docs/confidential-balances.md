@@ -8,13 +8,13 @@ On-chain terminal check: [program.md](program.md) **D3**. Who signs HP operation
 
 ## Token types
 
-| | HP | Reward |
-| --- | --- | --- |
-| Kind | Confidential Token-2022 | Public token (conceptually a stablecoin) |
-| Unit | 1 token = 1 HP = 1 remaining successful strike | Any mint; vault amount is visible |
-| Mint | **One shared mint** for all instances (**DEP6**) | The GM's chosen mint |
-| Per instance | Own HP **token account** (not an ATA of the arbiter) | Reward vault (program PDA) |
-| What it is | Initial balance determines the hidden Drawing range length; remaining balance is the number of successful strikes left before closure | The prize; the player assigned the selected index receives it at `Settle` |
+|              | HP                                                                                                                                    | Reward                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Kind         | Confidential Token-2022                                                                                                               | Public token (conceptually a stablecoin)                                  |
+| Unit         | 1 token = 1 HP = 1 remaining successful strike                                                                                        | Any mint; vault amount is visible                                         |
+| Mint         | **One shared mint** for all instances (**DEP6**)                                                                                      | The GM's chosen mint                                                      |
+| Per instance | Own HP **token account** (not an ATA of the arbiter)                                                                                  | Reward vault (program PDA)                                                |
+| What it is   | Initial balance determines the hidden Drawing range length; remaining balance is the number of successful strikes left before closure | The prize; the player assigned the selected index receives it at `Settle` |
 
 **Register** exists so each player can set up a token account for the reward mint before a payout can land.
 
@@ -47,11 +47,11 @@ flowchart TB
   public -.->|cannot infer exactly during play| hiddenFromPublic
 ```
 
-| During `Live` | At `Drawing` / `GameOver` |
-| --- | --- |
-| Initial HP and remaining HP cannot be inferred exactly because the arbiter's quote and realized offset are private. | When striking closes, successful Attack count `N` equals realized initial HP and fixes the Drawing range if HP changed only via conforming Attacks. |
-| The v1 offset range `0..=5`, including its maximum, is public. Participants can estimate a possible final strike-count range and the GM can gauge maximum potential proceeds. | Valid indexes are `[0, N - 1]`; the Terminal Attack is assigned `N - 1` and remains eligible. |
-| Every successful Attack publicly identifies its chronological index and attacking wallet. | `Drawing` exposes only the selected-index commitment. `Settle` reveals the index and nonce; the winning wallet and public payout are auditable. |
+| During `Live`                                                                                                                                                                 | At `Drawing` / `GameOver`                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initial HP and remaining HP cannot be inferred exactly because the arbiter's quote and realized offset are private.                                                           | When striking closes, successful Attack count `N` equals realized initial HP and fixes the Drawing range if HP changed only via conforming Attacks. |
+| The v1 offset range `0..=5`, including its maximum, is public. Participants can estimate a possible final strike-count range and the GM can gauge maximum potential proceeds. | Valid indexes are `[0, N - 1]`; the Terminal Attack is assigned `N - 1` and remains eligible.                                                       |
+| Every successful Attack publicly identifies its chronological index and attacking wallet.                                                                                     | `Drawing` exposes only the selected-index commitment. `Settle` reveals the index and nonce; the winning wallet and public payout are auditable.     |
 
 The exact HP, remaining HP, realized offset, and arbiter's exact price quote remain secret during play. The offset **range** is not secret.
 
@@ -67,13 +67,13 @@ flowchart LR
   applyBurn --> aes["UpdateDecryptableSupply<br/>mint AES only"]
 ```
 
-| Instruction | Effect | Signer |
-| --- | --- | --- |
-| `ConfidentialMint` | Encrypted initial HP / eventual Drawing range length into this vault's **pending**. CPI during Initialize. | HP **mint** authority (arbiter backend) |
-| `ApplyPendingBalance` | Pending → **available**. CPI during Initialize immediately after the `ConfidentialMint` CPI, so both effects are atomic. Required before any Attack burn. | HP **vault** authority (arbiter transaction signer; not a PDA) |
-| `ConfidentialBurn` | Homomorphic −1 on this vault. **This is the successful strike paired with one index assignment.** CPI from Attack. | Vault authority + burn proofs (not mint authority, not a PDA) |
-| `ApplyPendingBurn` | Folds the shared mint's `pending_burn` into encrypted supply. **Not** the HP decrement or index record. | Mint authority |
-| `UpdateDecryptableSupply` | Refreshes mint AES decryptable supply after `ApplyPendingBurn`. **Not** the HP decrement or index record. | Mint authority + arbiter-held supply AES |
+| Instruction               | Effect                                                                                                                                                    | Signer                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `ConfidentialMint`        | Encrypted initial HP / eventual Drawing range length into this vault's **pending**. CPI during Initialize.                                                | HP **mint** authority (arbiter backend)                        |
+| `ApplyPendingBalance`     | Pending → **available**. CPI during Initialize immediately after the `ConfidentialMint` CPI, so both effects are atomic. Required before any Attack burn. | HP **vault** authority (arbiter transaction signer; not a PDA) |
+| `ConfidentialBurn`        | Homomorphic −1 on this vault. **This is the successful strike paired with one index assignment.** CPI from Attack.                                        | Vault authority + burn proofs (not mint authority, not a PDA)  |
+| `ApplyPendingBurn`        | Folds the shared mint's `pending_burn` into encrypted supply. **Not** the HP decrement or index record.                                                   | Mint authority                                                 |
+| `UpdateDecryptableSupply` | Refreshes mint AES decryptable supply after `ApplyPendingBurn`. **Not** the HP decrement or index record.                                                 | Mint authority + arbiter-held supply AES                       |
 
 Supply ElGamal and AES live on the arbiter backend. They MUST be the same ElGamal pubkey and the same AES as every instance vault, derived from the arbiter Solana authority keypair (**A2**).
 
@@ -85,11 +85,11 @@ Supply ElGamal and AES live on the arbiter backend. They MUST be the same ElGama
 flowchart LR
   burn[ConfidentialBurn] --> proof{VerifyZeroCiphertext in this Attack?}
   proof -->|no| live[Stay Live — even if leftover is 0]
-  proof -->|yes| bind[CPI verify + byte-bind to post-burn vault]
+  proof -->|yes| bind[Read verified sibling + byte-bind to post-burn vault]
   bind -->|match| drawing[Enter Drawing + store commitment]
 ```
 
-- A Terminal Attack includes `VerifyZeroCiphertext` from the ZK ElGamal Proof Program. The Piñata program binds it to this vault's post-burn `available_balance` (**D3**). A successful match enters `Drawing`, stores the selected-index commitment, and leaves the reward and pile escrowed.
+- A Terminal Attack includes a top-level `VerifyZeroCiphertext` instruction from the ZK ElGamal Proof Program. The Piñata program reads that already-executed sibling through the instructions sysvar and binds its decoded public context to this vault's post-burn `available_balance` (**D3**). A successful match enters `Drawing`, stores the selected-index commitment, and leaves the reward and pile escrowed.
 - A failed or mismatched proof aborts the entire Attack, including its burn, fee, index assignment, and count.
 - No such proof means remain `Live`, even if leftover is actually 0. That gap is **malicious/exploited arbiter only** (**A7**). A conforming arbiter MUST NOT assemble it (**A5**).
 - `Settle` relies on the on-chain `Drawing` state and does not verify the zero proof again.

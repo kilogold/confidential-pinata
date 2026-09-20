@@ -47,13 +47,13 @@ There is no separate participation asset or per-strike account. Successful Attac
 
 ## Participants
 
-| Participant | Where | Role |
-| --- | --- | --- |
-| **GM wallet** | Client | Connects to the webapp. Completes Initialize and Close as fee payer; pays PDA rent. Receives the SOL pile at `Settle` and instance rent at Close. MUST NOT hold live HP keys or authorities. |
-| **Player wallet** | Client | Connects to the webapp. Signs Register and Attack. Pays the strike fee. A player may also request `Settle`. |
-| **Settle requester wallet** | Client | Any participant requesting settlement. Signs the arbiter-built `Settle` transaction as fee payer and sends it through that wallet's RPC. Need not be the winner, Terminal Attacker, or GM. |
-| **Arbiter webapp** | Off-chain (frontend, backend, and program client as **one** participant) | Primary client. Prices the reward, draws HP, holds keys, attaches HP proofs, makes and persists the prototype winner selection, maps its selected index to a wallet from public Attack history, and builds and signs `Settle`. |
-| **Piñata program** | Solana | Five instructions, lifecycle enforcement, commitment opening checks, and atomic settlement. Not a user-facing client and cannot scan historical transactions. |
+| Participant                 | Where                                                                    | Role                                                                                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **GM wallet**               | Client                                                                   | Connects to the webapp. Completes Initialize, Reinitialize, and Close as fee payer; pays PDA rent. Receives the SOL pile at `Settle` and instance rent at Close. MUST NOT hold live HP keys or authorities.                    |
+| **Player wallet**           | Client                                                                   | Connects to the webapp. Signs Register and Attack. Pays the strike fee. A player may also request `Settle`.                                                                                                                    |
+| **Settle requester wallet** | Client                                                                   | Any participant requesting settlement. Signs the arbiter-built `Settle` transaction as fee payer and sends it through that wallet's RPC. Need not be the winner, Terminal Attacker, or GM.                                     |
+| **Arbiter webapp**          | Off-chain (frontend, backend, and program client as **one** participant) | Primary client. Prices the reward, draws HP, holds keys, attaches HP proofs, makes and persists the prototype winner selection, maps its selected index to a wallet from public Attack history, and builds and signs `Settle`. |
+| **Piñata program**          | Solana                                                                   | Six instructions, lifecycle enforcement, commitment opening checks, and atomic settlement. Reinitialize is currently a fail-closed stub. Not a user-facing client and cannot scan historical transactions.                     |
 
 Isolation (**DEP3**, **A6**) applies to **backend secrets**, not to using the frontend to request or sign a transaction.
 
@@ -61,11 +61,11 @@ Isolation (**DEP3**, **A6**) applies to **backend secrets**, not to using the fr
 
 Solana uses “owner” for two different pubkeys. This design uses:
 
-| Word | Meaning |
-| --- | --- |
-| **Owner** | Runtime program id that may modify the account's **data**. HP vault owner = Token-2022. |
-| **Authority** | Token-2022 pubkey that signs burns, pending-balance apply, confidential configure, and close of that token account (layout field still named `owner`). |
-| **Mint authority** | Separate Token-2022 role on the **mint** (`ConfidentialMint`, `ApplyPendingBurn`, `UpdateDecryptableSupply`). |
+| Word               | Meaning                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Owner**          | Runtime program id that may modify the account's **data**. HP vault owner = Token-2022.                                                                |
+| **Authority**      | Token-2022 pubkey that signs burns, pending-balance apply, confidential configure, and close of that token account (layout field still named `owner`). |
+| **Mint authority** | Separate Token-2022 role on the **mint** (`ConfidentialMint`, `ApplyPendingBurn`, `UpdateDecryptableSupply`).                                          |
 
 ```mermaid
 flowchart LR
@@ -105,7 +105,7 @@ The GM wallet MUST NOT have operational access to the arbiter backend: keys, exa
 
 ### DEP4. Program client is in the webapp
 
-The Piñata program client MUST live in the arbiter webapp. GM and participant wallets MUST use that webapp as their primary interaction surface. They MUST NOT be assumed to hold a separate program client that can complete Initialize, Attack, Settle, or Close.
+The Piñata program client MUST live in the arbiter webapp. GM and participant wallets MUST use that webapp as their primary interaction surface. They MUST NOT be assumed to hold a separate program client that can complete Initialize, Reinitialize, Attack, Settle, or Close.
 
 Initialize, Attack, and Close require ZK proofs generated from backend-held vault ElGamal keys (**A1**, **A2**, **A5**). Close MUST be arbiter-constructed: after `GameOver` the HP vault still holds an encrypt(0) leftover, not empty bytes, and Token-2022 will not close that account without a leftover-zero proof. The arbiter backend MUST attach that proof and partial-sign as HP vault authority (**DEP6**); the GM wallet completes as fee payer (**F0**). Close MUST NOT close the shared HP mint.
 

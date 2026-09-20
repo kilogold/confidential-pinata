@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { before, test } from "node:test";
 import {
-  createClient,
+  createSolanaRpc,
   createNoopSigner,
   generateKeyPairSigner,
   getAddressEncoder,
@@ -18,8 +18,6 @@ import {
   type KeyPairSigner,
   type Signature,
 } from "@solana/kit";
-import { payer } from "@solana/kit-plugin-signer";
-import { surfpool } from "@solana/surfpool/kit";
 import { fetchToken } from "@solana-program/token";
 import { fetchMaybeToken, fetchMint } from "@solana-program/token-2022";
 import { AeCiphertext } from "@solana/zk-sdk/node";
@@ -33,7 +31,7 @@ import {
 import { TOKEN_PROGRAM_ADDRESS } from "@/app/lib/constants";
 import { deriveArbiterKeys } from "@/app/lib/server/arbiter-keys";
 import { loadArbiterEnv } from "@/app/lib/server/env";
-import { buildPartialInitializeTransactions } from "@/app/lib/server/initialize/build";
+import { buildPartialInitializeTransaction } from "@/app/lib/server/initialize/build";
 import {
   generateInitializeProofs,
   hpVaultNeedsCreate,
@@ -83,79 +81,55 @@ const USDC_AMOUNT = 1_000_000_000n;
 const rpcUrl =
   process.env.ANCHOR_PROVIDER_URL?.trim() || "http://127.0.0.1:8899";
 
-function enableConfidentialAutoApprove(data: Buffer, authority: Address): void {
-  const authorityBytes = Buffer.from(getAddressEncoder().encode(authority));
-  const typeTag = Buffer.from([4, 0]);
-  let idx = 0;
-  while ((idx = data.indexOf(typeTag, idx)) >= 0) {
-    if (idx + 4 > data.length) break;
-    const length = data.readUInt16LE(idx + 2);
-    const body = idx + 4;
-    if (
-      length === 65 &&
-      body + length <= data.length &&
-      data.subarray(body, body + 32).equals(authorityBytes)
-    ) {
-      data[body + 32] = 1;
-      return;
-    }
-    idx += 1;
-  }
-  throw new Error("ConfidentialTransferMint TLV not found on HP mint");
-}
-
 let gm!: KeyPairSigner;
 let player!: KeyPairSigner;
 let arbiter!: Awaited<ReturnType<typeof deriveArbiterKeys>>;
 let hpMint!: Address;
-let client!: ReturnType<typeof createAttachClient>;
+let rpc!: SolanaRpc;
 
-function createAttachClient(arbiterSigner: KeyPairSigner) {
-  return createClient().use(payer(arbiterSigner)).use(surfpool({ rpcUrl }));
+async function surfnet(method: string, params: unknown[]): Promise<unknown> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: `surfnet_${method}`,
+      params,
+    }),
+  });
+  const result = (await response.json()) as {
+    error?: { message?: string };
+    result?: unknown;
+  };
+  if (!response.ok || result.error) {
+    throw new Error(
+      `Surfpool ${method} failed: ${result.error?.message ?? response.statusText}`
+    );
+  }
+  return result.result;
 }
 
 async function fundSol(address: Address, lamports: bigint): Promise<void> {
-  await client.cheatcodes
-    .setAccount(address, { lamports, owner: SYSTEM_PROGRAM })
-    .send();
+  await surfnet("setAccount", [
+    address,
+    { lamports: Number(lamports), owner: SYSTEM_PROGRAM },
+  ]);
 }
 
 async function fundUsdc(owner: Address, amount: bigint): Promise<void> {
-  await client.cheatcodes
-    .setTokenAccount(owner, DEVNET_USDC, {
-      amount,
+  await surfnet("setTokenAccount", [
+    owner,
+    DEVNET_USDC,
+    {
+      amount: Number(amount),
       state: "initialized",
-    })
-    .send();
-}
-
-async function accountData(address: Address): Promise<{
-  data: Buffer;
-  lamports: number;
-  owner: string;
-  executable: boolean;
-}> {
-  const { value } = await client.rpc
-    .getAccountInfo(address, { encoding: "base64" })
-    .send();
-  if (!value) {
-    throw new Error(`${address} missing on fork`);
-  }
-  const encoded = value.data;
-  const b64 = Array.isArray(encoded) ? encoded[0] : encoded;
-  if (typeof b64 !== "string") {
-    throw new Error(`${address}: expected base64 account data`);
-  }
-  return {
-    data: Buffer.from(b64, "base64"),
-    lamports: Number(value.lamports),
-    owner: value.owner,
-    executable: value.executable,
-  };
+    },
+  ]);
 }
 
 async function assertSupplyKeysMatchArbiter(): Promise<void> {
-  const mint = await fetchMint(client.rpc, hpMint);
+  const mint = await fetchMint(rpc, hpMint);
   const extensions = isSome(mint.data.extensions)
     ? mint.data.extensions.value
     : [];
@@ -177,23 +151,9 @@ async function assertSupplyKeysMatchArbiter(): Promise<void> {
   arbiter.aes.decrypt(decryptable);
 }
 
-/** Some cloned Devnet mints have autoApproveNewAccounts=false. */
-async function enableAutoApproveIfNeeded(): Promise<void> {
-  const account = await accountData(hpMint);
-  enableConfidentialAutoApprove(account.data, arbiter.signer.address);
-  await client.cheatcodes
-    .setAccount(hpMint, {
-      lamports: account.lamports,
-      owner: account.owner,
-      executable: account.executable,
-      data: account.data.toString("hex"),
-    })
-    .send();
-}
-
 async function confirmSignature(signature: Signature): Promise<void> {
   for (let i = 0; i < 40; i += 1) {
-    const { value } = await client.rpc.getSignatureStatuses([signature]).send();
+    const { value } = await rpc.getSignatureStatuses([signature]).send();
     const status = value[0];
     if (status?.err) {
       throw new Error(
@@ -226,26 +186,22 @@ before(async () => {
     `arbiter key must be ${ARBITER}`
   );
 
-  client = createAttachClient(arbiter.signer);
+  rpc = createSolanaRpc(rpcUrl) as SolanaRpc;
   gm = await generateKeyPairSigner();
   player = await generateKeyPairSigner();
 
-  Promise.all([
-    await fundSol(gm.address, SOL_LAMPORTS),
-    await fundSol(player.address, SOL_LAMPORTS),
-    await fundSol(arbiter.signer.address, SOL_LAMPORTS),
-    await fundUsdc(gm.address, USDC_AMOUNT),
-    await fundUsdc(player.address, USDC_AMOUNT),
-    await fundUsdc(arbiter.signer.address, USDC_AMOUNT),
-    await assertSupplyKeysMatchArbiter(),
-    await enableAutoApproveIfNeeded(),
+  await Promise.all([
+    fundSol(gm.address, SOL_LAMPORTS),
+    fundSol(player.address, SOL_LAMPORTS),
+    fundSol(arbiter.signer.address, SOL_LAMPORTS),
+    fundUsdc(gm.address, USDC_AMOUNT),
+    fundUsdc(player.address, USDC_AMOUNT),
+    fundUsdc(arbiter.signer.address, USDC_AMOUNT),
+    assertSupplyKeysMatchArbiter(),
   ]);
 });
 
 test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
-  // Attach-mode Surfpool RPC omits getTransactionsForAddress from its type;
-  // runtime still supports the methods Initialize uses.
-  const rpc = client.rpc as SolanaRpc;
   const sessionId = `t${crypto.randomUUID().replaceAll("-", "").slice(0, 23)}`;
   const [sessionPda] = await findSessionPda({ sessionId });
   const [hpVault] = await findHpVaultPda({ sessionId });
@@ -258,17 +214,15 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
   const proofs = await generateInitializeProofs({
     rpc,
     payer: createNoopSigner(gm.address),
-    authority: arbiter.signer,
     elgamal: arbiter.elgamal,
     aes: arbiter.aes,
     hpMint,
     hpVault,
     hp: HP_AMOUNT,
     needsVaultCreate,
-    needsZeroProof: false,
   });
 
-  const prepared = await buildPartialInitializeTransactions({
+  const prepared = await buildPartialInitializeTransaction({
     rpc,
     gm: gm.address,
     arbiter: arbiter.signer,
@@ -281,32 +235,26 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
     proofs,
   });
 
-  assert.ok(
-    prepared.transactions.length > 1,
-    "Initialize should require a sequence"
+  const txBytes = getBase64Encoder().encode(
+    prepared.transaction as Base64EncodedWireTransaction
   );
-  for (const partialWire of prepared.transactions) {
-    const simulation = await rpc
-      .simulateTransaction(partialWire as Base64EncodedWireTransaction, {
-        encoding: "base64",
-        sigVerify: false,
-      })
-      .send();
-    assert.equal(
-      simulation.value.err,
-      null,
-      `Prepared transaction simulation failed: ${JSON.stringify(simulation.value.err)}`
-    );
-
-    const txBytes = getBase64Encoder().encode(
-      partialWire as Base64EncodedWireTransaction
-    );
-    const partialTx = getTransactionDecoder().decode(txBytes);
-    const signedTx = await signTransaction([gm.keyPair], partialTx);
-    const wire = getBase64EncodedWireTransaction(signedTx);
-    await rpc.sendTransaction(wire, { encoding: "base64" }).send();
-    await confirmSignature(getSignatureFromTransaction(signedTx));
-  }
+  assert.equal(txBytes[0], 0x81, "Initialize must use transaction v1");
+  assert.ok(txBytes.length <= 4096, "Initialize must fit the v1 wire limit");
+  const partialTx = getTransactionDecoder().decode(txBytes);
+  assert.notEqual(
+    partialTx.signatures[arbiter.signer.address],
+    null,
+    "arbiter partial signature must be retained"
+  );
+  assert.equal(
+    partialTx.signatures[gm.address],
+    null,
+    "GM must complete the fee-payer signature"
+  );
+  const signedTx = await signTransaction([gm.keyPair], partialTx);
+  const wire = getBase64EncodedWireTransaction(signedTx);
+  await rpc.sendTransaction(wire, { encoding: "base64" }).send();
+  await confirmSignature(getSignatureFromTransaction(signedTx));
 
   const arbiterBalanceAfter = await rpc
     .getBalance(arbiter.signer.address)

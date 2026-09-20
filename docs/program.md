@@ -18,23 +18,24 @@ stateDiagram-v2
 
   Drawing --> GameOver: Settle\nreveal commitment\npay winner and GM
 
-  GameOver --> Live: Initialize new session
+  GameOver --> Live: Reinitialize new session
   GameOver --> Closed: Close
 
   Closed --> [*]
 ```
 
-While `Drawing`, only **Settle** is valid. After `GameOver`, only **Close** or **Initialize** is valid.
+While `Drawing`, only **Settle** is valid. After `GameOver`, only **Close** or the dedicated **Reinitialize** instruction is valid.
 
 ## Instructions
 
-| Instruction | When | What |
-| --- | --- | --- |
-| **Initialize** | `Uninitialized` or `GameOver`; never `Live` or `Drawing`. | GM pays PDA rent, locks a **public** reward, sets the strike fee. Arbiter prices and sets HP. Initialize CPIs `ConfidentialMint` into this vault on the **shared** mint, then immediately CPIs `ApplyPendingBalance`; both use the arbiter's transaction signer privilege and no PDA signer. Resets the successful-Attack count for a new session. |
-| **Register** | `Live` only. | Admit a player and set up their reward token account. |
-| **Attack** | `Live` only. | Atomically move the fixed strike fee into this pile, burn 1 HP, assign the next zero-based successful-Attack index to the attacker, and increment the successful-Attack count. A terminal zero proof transitions to `Drawing` and stores a selected-index commitment. Attack never transfers the reward or pile. |
-| **Settle** | `Drawing` only. | Arbiter-signed commitment opening. Validate the selected index, then atomically transfer the public reward to the player assigned that index and the SOL pile to the GM; enter `GameOver`. The requester is fee payer (**F3**). |
-| **Close** | `GameOver` only. GM signer and rent recipient. | Tear down this instance's PDAs (including this HP token account). MUST NOT close the shared HP mint. Arbiter attaches leftover-zero proof and signs as vault authority; GM completes (**F0**). **Not** settlement. |
+| Instruction      | When                                           | What                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Initialize**   | `Uninitialized` only.                          | GM pays PDA rent, locks a **public** reward, sets the strike fee. Arbiter prices and sets HP. Initialize CPIs `ConfidentialMint` into this vault on the **shared** mint, then immediately CPIs `ApplyPendingBalance`; both use the arbiter's transaction signer privilege and no PDA signer. Creates the first session with successful-Attack count zero. |
+| **Reinitialize** | Reserved for `GameOver` only.                  | Starts a later session without overloading Initialize. Its reset, reward-funding, confidential-mint, and proof rules remain unspecified; the current implementation MUST fail closed as an explicit stub.                                                                                                                                                 |
+| **Register**     | `Live` only.                                   | Admit a player and set up their reward token account.                                                                                                                                                                                                                                                                                                     |
+| **Attack**       | `Live` only.                                   | Atomically move the fixed strike fee into this pile, burn 1 HP, assign the next zero-based successful-Attack index to the attacker, and increment the successful-Attack count. A terminal zero proof transitions to `Drawing` and stores a selected-index commitment. Attack never transfers the reward or pile.                                          |
+| **Settle**       | `Drawing` only.                                | Arbiter-signed commitment opening. Validate the selected index, then atomically transfer the public reward to the player assigned that index and the SOL pile to the GM; enter `GameOver`. The requester is fee payer (**F3**).                                                                                                                           |
+| **Close**        | `GameOver` only. GM signer and rent recipient. | Tear down this instance's PDAs (including this HP token account). MUST NOT close the shared HP mint. Arbiter attaches leftover-zero proof and signs as vault authority; GM completes (**F0**). **Not** settlement.                                                                                                                                        |
 
 ## Attack closure and settlement
 
@@ -45,8 +46,8 @@ flowchart LR
   attack[Attack: fee + HP − 1 + next index]
   attack --> proof{VerifyZeroCiphertext in Attack?}
   proof -->|no| live[Stay Live]
-  proof -->|yes| cpi[CPI verify]
-  cpi --> bind[Byte-bind to post-burn vault]
+  proof -->|yes| sibling[Read verified sibling]
+  sibling --> bind[Byte-bind to post-burn vault]
   bind -->|fail or mismatch| reject[Whole Attack fails]
   bind -->|match| drawing[Drawing: store commitment]
   drawing --> settle[Later Settle]
@@ -54,10 +55,10 @@ flowchart LR
   settle --> gm[GM gets SOL pile]
 ```
 
-| Branch | Program MUST |
-| --- | --- |
-| Proof **absent** | Keep the instance `Live`. Do not pay pile or reward. Required even if post-burn HP is actually zero. A conforming arbiter MUST NOT submit that terminal burn (**A5**). The instruction is theoretically open because v1 does not require a leftover-nonzero proof; that path is malicious/exploited arbiter only (**A7**), which v1 accepts. |
-| Proof **present** | CPI the proof program. Failed CPI MUST fail the **whole** Attack, including fee, burn, index assignment, and count change. After success, context ElGamal pubkey MUST equal the vault's ElGamal pubkey and context ciphertext MUST equal the post-burn `available_balance`. Mismatch MUST fail. Match MUST store the supplied selected-index commitment and enter `Drawing`; it MUST NOT transfer reward or pile. |
+| Branch            | Program MUST                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Proof **absent**  | Keep the instance `Live`. Do not pay pile or reward. Required even if post-burn HP is actually zero. A conforming arbiter MUST NOT submit that terminal burn (**A5**). The instruction is theoretically open because v1 does not require a leftover-nonzero proof; that path is malicious/exploited arbiter only (**A7**), which v1 accepts.                                                                                                                                                                                                   |
+| Proof **present** | Load the preceding top-level `VerifyZeroCiphertext` sibling through the instructions sysvar and validate its program and proof type. A failed proof instruction has already failed the **whole** transaction, including fee, burn, index assignment, and count change. Its decoded ElGamal pubkey MUST equal the vault's ElGamal pubkey and its ciphertext MUST equal the post-burn `available_balance`. Mismatch MUST fail. Match MUST store the supplied selected-index commitment and enter `Drawing`; it MUST NOT transfer reward or pile. |
 
 The proof is for the **post-burn** vault blob (homomorphic leftover), not a freshly encrypted zero. `Settle` relies on the on-chain `Drawing` state and MUST NOT verify the same zero proof again.
 
@@ -69,9 +70,9 @@ Normative language follows RFC 2119. These decisions apply to the on-chain progr
 
 ### D1. Surface and instances
 
-The program MUST expose exactly five instructions: **Initialize**, **Register**, **Attack**, **Settle**, and **Close**. Each piñata is an independent instance with its own PDA set (**DEP1**). Every instruction MUST target one instance. All instances MUST use the same HP mint (**DEP6**).
+The program MUST expose exactly six instructions: **Initialize**, **Reinitialize**, **Register**, **Attack**, **Settle**, and **Close**. Each piñata is an independent instance with its own PDA set (**DEP1**). Every instruction MUST target one instance. All instances MUST use the same HP mint (**DEP6**).
 
-The lifecycle MUST be `Uninitialized → Live → Drawing → GameOver`, with the transitions shown above. While `Drawing`, Attack, Register, Initialize, and Close MUST fail; only Settle is permitted.
+The lifecycle MUST be `Uninitialized → Live → Drawing → GameOver`, with `Initialize` as the only `Uninitialized → Live` instruction and dedicated `Reinitialize` reserved for `GameOver → Live`. While `Drawing`, Attack, Register, Initialize, Reinitialize, and Close MUST fail; only Settle is permitted. Until Reinitialize is specified and implemented, its stub MUST fail without changing state.
 
 > **FUTURE (not v1).** v1 lets the arbiter modify HP out of band (Token-2022 signed by mint/vault authority, including sibling instructions and transactions that never invoke this program) to reduce the number of Piñata program instructions during early development. **D3** still requires Attack's burn to be a CPI when Attack runs; that does not stop Token-2022 from accepting a burn with no Attack. Later versions MUST restrict HP modifications to the Piñata program and MUST forbid that out-of-band path ([deployment.md](deployment.md) **DEP6**, **O1**).
 
@@ -83,7 +84,7 @@ The game master MUST NOT choose HP. HP at Initialize MUST be set by the arbiter 
 
 Every successful Attack MUST atomically debit one HP (`ConfidentialBurn`), credit the instance SOL pile by the fixed strike fee, assign the attacker's wallet the next zero-based chronological successful-Attack index, and increment the count. Failed transactions MUST assign no index and do none of those things. The burn MUST be a CPI from Attack so the strike, index assignment, and fee stay one instruction. The Token-2022 vault-authority signer MUST be the arbiter, not a PDA (**DEP6**).
 
-The on-chain live-versus-terminal branch MUST be whether this Attack includes a ZK ElGamal Proof Program `VerifyZeroCiphertext` proof. The program MUST verify a present proof by CPI and byte-bind it to the post-burn HP vault. A failed or mismatched proof MUST fail the whole Attack. A proof absent from the terminal burn leaves the instance stalled `Live` with encrypt(0), the accepted malicious/exploited-arbiter caveat (**A7**).
+The on-chain live-versus-terminal branch MUST be whether this Attack references a preceding top-level ZK ElGamal Proof Program `VerifyZeroCiphertext` instruction. The program MUST load that sibling through the instructions sysvar, validate its program and proof type, decode its public context, and byte-bind it to the post-burn HP vault. A failed proof instruction or mismatched context MUST fail the whole transaction. A proof absent from the terminal burn leaves the instance stalled `Live` with encrypt(0), the accepted malicious/exploited-arbiter caveat (**A7**).
 
 When the bound zero proof succeeds, the Terminal Attack MUST retain its assigned index, record final successful-Attack count `N`, require and store a hiding and binding selected-index commitment supplied by the arbiter, and transition `Live → Drawing`. The final Drawing range is `[0, N - 1]`, including the Terminal Attack's index. The commitment MUST bind the session, `N`, selected index, and a secret nonce. Attack MUST NOT transfer the reward or SOL pile.
 
@@ -103,9 +104,10 @@ v1 MUST NOT require a leftover-HP-nonzero proof on the live path. The proof prog
 
 ### D4. Close and session reuse
 
-A new session on the same piñata MUST start only from `GameOver`, never from `Drawing`. Close MUST be callable only by the game master, valid only from `GameOver`, and return rent to the game master. Close MUST be assembled by the arbiter (**DEP4**); the GM MUST NOT be assumed to hold vault ElGamal keys or HP vault authority. Close MUST close this instance's HP token account and MUST NOT close the shared HP mint (**DEP6**). Close MUST NOT pay the SOL pile or reward; `Settle` already moved both (**D3**).
+A new session on the same piñata MUST use the dedicated Reinitialize instruction and may start only from `GameOver`, never from `Drawing`. Initialize MUST NOT contain a GameOver branch. Reinitialize is reserved but fail-closed in the current implementation; its full mechanics remain open below. Close MUST be callable only by the game master, valid only from `GameOver`, and return rent to the game master. Close MUST be assembled by the arbiter (**DEP4**); the GM MUST NOT be assumed to hold vault ElGamal keys or HP vault authority. Close MUST close this instance's HP token account and MUST NOT close the shared HP mint (**DEP6**). Close MUST NOT pay the SOL pile or reward; `Settle` already moved both (**D3**).
 
 ## Still open
 
 - Exact instruction data schemas, commitment hash/encoding, field sizes, account metas, and account byte layouts.
+- Reinitialize's proof set, zero-vault binding, reward reload, session reset, account list, and wire flow. Until decided, the implementation is a rejecting stub and no `GameOver → Live` transition is operational.
 - Pre-launch VRF request/reveal fields and transaction lifecycle, including any program changes, are [arbiter.md](arbiter.md) **O2**.

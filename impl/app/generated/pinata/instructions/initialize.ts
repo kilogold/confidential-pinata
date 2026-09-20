@@ -14,6 +14,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI8Decoder,
+  getI8Encoder,
   getStructDecoder,
   getStructEncoder,
   getU32Decoder,
@@ -22,6 +24,8 @@ import {
   getU64Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -35,10 +39,18 @@ import {
   type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
-  type TransactionSigner,
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  getNonNullResolvedInstructionInput,
+  type InstructionAccountInput,
+  type InstructionAccountInputAddress,
+  type InstructionSignerInput,
+  type ResolvedInstructionAccount,
+  type ResolvedInstructionAccountMeta,
+} from "@solana/kit/program-client-core";
 import {
   findHpVaultPda,
   findRewardVaultPda,
@@ -46,17 +58,12 @@ import {
   findSolPilePda,
 } from "../pdas";
 import { PINATA_PROGRAM_ADDRESS } from "../programs";
-import {
-  expectSome,
-  getAccountMetaFactory,
-  type ResolvedAccount,
-} from "../shared";
 
-export const INITIALIZE_DISCRIMINATOR = new Uint8Array([
+export const INITIALIZE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
   175, 175, 109, 31, 13, 152, 155, 237,
 ]);
 
-export function getInitializeDiscriminatorBytes() {
+export function getInitializeDiscriminatorBytes(): ReadonlyUint8Array {
   return fixEncoderSize(getBytesEncoder(), 8).encode(INITIALIZE_DISCRIMINATOR);
 }
 
@@ -71,11 +78,8 @@ export type InitializeInstruction<
   TAccountRewardVault extends string | AccountMeta<string> = string,
   TAccountRewardSource extends string | AccountMeta<string> = string,
   TAccountSolPile extends string | AccountMeta<string> = string,
-  TAccountEqualityProof extends string | AccountMeta<string> = string,
-  TAccountCiphertextValidityProof extends string | AccountMeta<string> = string,
-  TAccountRangeProof extends string | AccountMeta<string> = string,
-  TAccountPubkeyValidityProof extends string | AccountMeta<string> = string,
-  TAccountZeroProof extends string | AccountMeta<string> = string,
+  TAccountInstructionsSysvar extends string | AccountMeta<string> =
+    "Sysvar1nstructions1111111111111111111111111",
   TAccountToken2022Program extends string | AccountMeta<string> =
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   TAccountRewardTokenProgram extends string | AccountMeta<string> = string,
@@ -114,21 +118,9 @@ export type InitializeInstruction<
       TAccountSolPile extends string
         ? WritableAccount<TAccountSolPile>
         : TAccountSolPile,
-      TAccountEqualityProof extends string
-        ? ReadonlyAccount<TAccountEqualityProof>
-        : TAccountEqualityProof,
-      TAccountCiphertextValidityProof extends string
-        ? ReadonlyAccount<TAccountCiphertextValidityProof>
-        : TAccountCiphertextValidityProof,
-      TAccountRangeProof extends string
-        ? ReadonlyAccount<TAccountRangeProof>
-        : TAccountRangeProof,
-      TAccountPubkeyValidityProof extends string
-        ? ReadonlyAccount<TAccountPubkeyValidityProof>
-        : TAccountPubkeyValidityProof,
-      TAccountZeroProof extends string
-        ? ReadonlyAccount<TAccountZeroProof>
-        : TAccountZeroProof,
+      TAccountInstructionsSysvar extends string
+        ? ReadonlyAccount<TAccountInstructionsSysvar>
+        : TAccountInstructionsSysvar,
       TAccountToken2022Program extends string
         ? ReadonlyAccount<TAccountToken2022Program>
         : TAccountToken2022Program,
@@ -147,6 +139,10 @@ export type InitializeInstructionData = {
   sessionId: string;
   strikeFeeLamports: bigint;
   rewardAmount: bigint;
+  pubkeyValidityProofInstructionOffset: number;
+  equalityProofInstructionOffset: number;
+  ciphertextValidityProofInstructionOffset: number;
+  rangeProofInstructionOffset: number;
   decryptableZero: ReadonlyUint8Array;
   newDecryptableSupply: ReadonlyUint8Array;
   mintAmountAuditorCiphertextLo: ReadonlyUint8Array;
@@ -159,6 +155,10 @@ export type InitializeInstructionDataArgs = {
   sessionId: string;
   strikeFeeLamports: number | bigint;
   rewardAmount: number | bigint;
+  pubkeyValidityProofInstructionOffset: number;
+  equalityProofInstructionOffset: number;
+  ciphertextValidityProofInstructionOffset: number;
+  rangeProofInstructionOffset: number;
   decryptableZero: ReadonlyUint8Array;
   newDecryptableSupply: ReadonlyUint8Array;
   mintAmountAuditorCiphertextLo: ReadonlyUint8Array;
@@ -174,6 +174,10 @@ export function getInitializeInstructionDataEncoder(): Encoder<InitializeInstruc
       ["sessionId", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
       ["strikeFeeLamports", getU64Encoder()],
       ["rewardAmount", getU64Encoder()],
+      ["pubkeyValidityProofInstructionOffset", getI8Encoder()],
+      ["equalityProofInstructionOffset", getI8Encoder()],
+      ["ciphertextValidityProofInstructionOffset", getI8Encoder()],
+      ["rangeProofInstructionOffset", getI8Encoder()],
       ["decryptableZero", fixEncoderSize(getBytesEncoder(), 36)],
       ["newDecryptableSupply", fixEncoderSize(getBytesEncoder(), 36)],
       ["mintAmountAuditorCiphertextLo", fixEncoderSize(getBytesEncoder(), 64)],
@@ -181,7 +185,7 @@ export function getInitializeInstructionDataEncoder(): Encoder<InitializeInstruc
       ["expectedPendingBalanceCreditCounter", getU64Encoder()],
       ["newDecryptableAvailableBalance", fixEncoderSize(getBytesEncoder(), 36)],
     ]),
-    (value) => ({ ...value, discriminator: INITIALIZE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: INITIALIZE_DISCRIMINATOR })
   );
 }
 
@@ -191,6 +195,10 @@ export function getInitializeInstructionDataDecoder(): Decoder<InitializeInstruc
     ["sessionId", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
     ["strikeFeeLamports", getU64Decoder()],
     ["rewardAmount", getU64Decoder()],
+    ["pubkeyValidityProofInstructionOffset", getI8Decoder()],
+    ["equalityProofInstructionOffset", getI8Decoder()],
+    ["ciphertextValidityProofInstructionOffset", getI8Decoder()],
+    ["rangeProofInstructionOffset", getI8Decoder()],
     ["decryptableZero", fixDecoderSize(getBytesDecoder(), 36)],
     ["newDecryptableSupply", fixDecoderSize(getBytesDecoder(), 36)],
     ["mintAmountAuditorCiphertextLo", fixDecoderSize(getBytesDecoder(), 64)],
@@ -206,49 +214,50 @@ export function getInitializeInstructionDataCodec(): Codec<
 > {
   return combineCodec(
     getInitializeInstructionDataEncoder(),
-    getInitializeInstructionDataDecoder(),
+    getInitializeInstructionDataDecoder()
   );
 }
 
 export type InitializeAsyncInput<
-  TAccountGm extends string = string,
-  TAccountArbiter extends string = string,
-  TAccountSession extends string = string,
-  TAccountHpVault extends string = string,
-  TAccountHpMint extends string = string,
-  TAccountRewardMint extends string = string,
-  TAccountRewardVault extends string = string,
-  TAccountRewardSource extends string = string,
-  TAccountSolPile extends string = string,
-  TAccountEqualityProof extends string = string,
-  TAccountCiphertextValidityProof extends string = string,
-  TAccountRangeProof extends string = string,
-  TAccountPubkeyValidityProof extends string = string,
-  TAccountZeroProof extends string = string,
-  TAccountToken2022Program extends string = string,
-  TAccountRewardTokenProgram extends string = string,
-  TAccountSystemProgram extends string = string,
+  TAccountGm extends InstructionSignerInput = InstructionSignerInput,
+  TAccountArbiter extends InstructionSignerInput = InstructionSignerInput,
+  TAccountSession extends InstructionAccountInput = InstructionAccountInput,
+  TAccountHpVault extends InstructionAccountInput = InstructionAccountInput,
+  TAccountHpMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardVault extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardSource extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSolPile extends InstructionAccountInput = InstructionAccountInput,
+  TAccountInstructionsSysvar extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountToken2022Program extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountRewardTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput =
+    InstructionAccountInput,
 > = {
-  gm: TransactionSigner<TAccountGm>;
-  arbiter: TransactionSigner<TAccountArbiter>;
-  session?: Address<TAccountSession>;
-  hpVault?: Address<TAccountHpVault>;
-  hpMint: Address<TAccountHpMint>;
-  rewardMint: Address<TAccountRewardMint>;
-  rewardVault?: Address<TAccountRewardVault>;
-  rewardSource: Address<TAccountRewardSource>;
-  solPile?: Address<TAccountSolPile>;
-  equalityProof: Address<TAccountEqualityProof>;
-  ciphertextValidityProof: Address<TAccountCiphertextValidityProof>;
-  rangeProof: Address<TAccountRangeProof>;
-  pubkeyValidityProof?: Address<TAccountPubkeyValidityProof>;
-  zeroProof?: Address<TAccountZeroProof>;
-  token2022Program?: Address<TAccountToken2022Program>;
-  rewardTokenProgram: Address<TAccountRewardTokenProgram>;
-  systemProgram?: Address<TAccountSystemProgram>;
+  gm: TAccountGm;
+  arbiter: TAccountArbiter;
+  session?: TAccountSession;
+  hpVault?: TAccountHpVault;
+  hpMint: TAccountHpMint;
+  rewardMint: TAccountRewardMint;
+  rewardVault?: TAccountRewardVault;
+  rewardSource: TAccountRewardSource;
+  solPile?: TAccountSolPile;
+  instructionsSysvar?: TAccountInstructionsSysvar;
+  token2022Program?: TAccountToken2022Program;
+  rewardTokenProgram: TAccountRewardTokenProgram;
+  systemProgram?: TAccountSystemProgram;
   sessionId: InitializeInstructionDataArgs["sessionId"];
   strikeFeeLamports: InitializeInstructionDataArgs["strikeFeeLamports"];
   rewardAmount: InitializeInstructionDataArgs["rewardAmount"];
+  pubkeyValidityProofInstructionOffset: InitializeInstructionDataArgs["pubkeyValidityProofInstructionOffset"];
+  equalityProofInstructionOffset: InitializeInstructionDataArgs["equalityProofInstructionOffset"];
+  ciphertextValidityProofInstructionOffset: InitializeInstructionDataArgs["ciphertextValidityProofInstructionOffset"];
+  rangeProofInstructionOffset: InitializeInstructionDataArgs["rangeProofInstructionOffset"];
   decryptableZero: InitializeInstructionDataArgs["decryptableZero"];
   newDecryptableSupply: InitializeInstructionDataArgs["newDecryptableSupply"];
   mintAmountAuditorCiphertextLo: InitializeInstructionDataArgs["mintAmountAuditorCiphertextLo"];
@@ -258,23 +267,19 @@ export type InitializeAsyncInput<
 };
 
 export async function getInitializeInstructionAsync<
-  TAccountGm extends string,
-  TAccountArbiter extends string,
-  TAccountSession extends string,
-  TAccountHpVault extends string,
-  TAccountHpMint extends string,
-  TAccountRewardMint extends string,
-  TAccountRewardVault extends string,
-  TAccountRewardSource extends string,
-  TAccountSolPile extends string,
-  TAccountEqualityProof extends string,
-  TAccountCiphertextValidityProof extends string,
-  TAccountRangeProof extends string,
-  TAccountPubkeyValidityProof extends string,
-  TAccountZeroProof extends string,
-  TAccountToken2022Program extends string,
-  TAccountRewardTokenProgram extends string,
-  TAccountSystemProgram extends string,
+  TAccountGm extends InstructionSignerInput,
+  TAccountArbiter extends InstructionSignerInput,
+  TAccountSession extends InstructionAccountInput,
+  TAccountHpVault extends InstructionAccountInput,
+  TAccountHpMint extends InstructionAccountInput,
+  TAccountRewardMint extends InstructionAccountInput,
+  TAccountRewardVault extends InstructionAccountInput,
+  TAccountRewardSource extends InstructionAccountInput,
+  TAccountSolPile extends InstructionAccountInput,
+  TAccountInstructionsSysvar extends InstructionAccountInput,
+  TAccountToken2022Program extends InstructionAccountInput,
+  TAccountRewardTokenProgram extends InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: InitializeAsyncInput<
@@ -287,76 +292,138 @@ export async function getInitializeInstructionAsync<
     TAccountRewardVault,
     TAccountRewardSource,
     TAccountSolPile,
-    TAccountEqualityProof,
-    TAccountCiphertextValidityProof,
-    TAccountRangeProof,
-    TAccountPubkeyValidityProof,
-    TAccountZeroProof,
+    TAccountInstructionsSysvar,
     TAccountToken2022Program,
     TAccountRewardTokenProgram,
     TAccountSystemProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: { programAddress?: TProgramAddress }
 ): Promise<
   InitializeInstruction<
     TProgramAddress,
-    TAccountGm,
-    TAccountArbiter,
-    TAccountSession,
-    TAccountHpVault,
-    TAccountHpMint,
-    TAccountRewardMint,
-    TAccountRewardVault,
-    TAccountRewardSource,
-    TAccountSolPile,
-    TAccountEqualityProof,
-    TAccountCiphertextValidityProof,
-    TAccountRangeProof,
-    TAccountPubkeyValidityProof,
-    TAccountZeroProof,
-    TAccountToken2022Program,
-    TAccountRewardTokenProgram,
-    TAccountSystemProgram
+    ResolvedInstructionAccountMeta<
+      TAccountGm,
+      InstructionAccountInputAddress<TAccountGm>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountArbiter,
+      InstructionAccountInputAddress<TAccountArbiter>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSession,
+      InstructionAccountInputAddress<TAccountSession>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpVault,
+      InstructionAccountInputAddress<TAccountHpVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpMint,
+      InstructionAccountInputAddress<TAccountHpMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardMint,
+      InstructionAccountInputAddress<TAccountRewardMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardVault,
+      InstructionAccountInputAddress<TAccountRewardVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardSource,
+      InstructionAccountInputAddress<TAccountRewardSource>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSolPile,
+      InstructionAccountInputAddress<TAccountSolPile>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountInstructionsSysvar,
+      InstructionAccountInputAddress<TAccountInstructionsSysvar>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountToken2022Program,
+      InstructionAccountInputAddress<TAccountToken2022Program>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardTokenProgram,
+      InstructionAccountInputAddress<TAccountRewardTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
+    >
   >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
+  // Account meta helper.
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+
   // Original accounts.
   const originalAccounts = {
-    gm: { value: input.gm ?? null, isWritable: true },
-    arbiter: { value: input.arbiter ?? null, isWritable: false },
-    session: { value: input.session ?? null, isWritable: true },
-    hpVault: { value: input.hpVault ?? null, isWritable: true },
-    hpMint: { value: input.hpMint ?? null, isWritable: true },
-    rewardMint: { value: input.rewardMint ?? null, isWritable: false },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
-    rewardSource: { value: input.rewardSource ?? null, isWritable: true },
-    solPile: { value: input.solPile ?? null, isWritable: true },
-    equalityProof: { value: input.equalityProof ?? null, isWritable: false },
-    ciphertextValidityProof: {
-      value: input.ciphertextValidityProof ?? null,
+    gm: { value: input.gm ?? null, isSigner: true, isWritable: true },
+    arbiter: {
+      value: input.arbiter ?? null,
+      isSigner: true,
       isWritable: false,
     },
-    rangeProof: { value: input.rangeProof ?? null, isWritable: false },
-    pubkeyValidityProof: {
-      value: input.pubkeyValidityProof ?? null,
+    session: {
+      value: input.session ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    hpVault: {
+      value: input.hpVault ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    hpMint: { value: input.hpMint ?? null, isSigner: false, isWritable: true },
+    rewardMint: {
+      value: input.rewardMint ?? null,
+      isSigner: false,
       isWritable: false,
     },
-    zeroProof: { value: input.zeroProof ?? null, isWritable: false },
+    rewardVault: {
+      value: input.rewardVault ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    rewardSource: {
+      value: input.rewardSource ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    solPile: {
+      value: input.solPile ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    instructionsSysvar: {
+      value: input.instructionsSysvar ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     token2022Program: {
       value: input.token2022Program ?? null,
+      isSigner: false,
       isWritable: false,
     },
     rewardTokenProgram: {
       value: input.rewardTokenProgram ?? null,
+      isSigner: false,
       isWritable: false,
     },
-    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    systemProgram: {
+      value: input.systemProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -364,24 +431,52 @@ export async function getInitializeInstructionAsync<
 
   // Resolve default values.
   if (!accounts.session.value) {
-    accounts.session.value = await findSessionPda({
-      sessionId: expectSome(args.sessionId),
-    });
+    accounts.session.value = await findSessionPda(
+      {
+        sessionId: getNonNullResolvedInstructionInput(
+          "sessionId",
+          args.sessionId
+        ),
+      },
+      { programAddress }
+    );
   }
   if (!accounts.hpVault.value) {
-    accounts.hpVault.value = await findHpVaultPda({
-      sessionId: expectSome(args.sessionId),
-    });
+    accounts.hpVault.value = await findHpVaultPda(
+      {
+        sessionId: getNonNullResolvedInstructionInput(
+          "sessionId",
+          args.sessionId
+        ),
+      },
+      { programAddress }
+    );
   }
   if (!accounts.rewardVault.value) {
-    accounts.rewardVault.value = await findRewardVaultPda({
-      sessionId: expectSome(args.sessionId),
-    });
+    accounts.rewardVault.value = await findRewardVaultPda(
+      {
+        sessionId: getNonNullResolvedInstructionInput(
+          "sessionId",
+          args.sessionId
+        ),
+      },
+      { programAddress }
+    );
   }
   if (!accounts.solPile.value) {
-    accounts.solPile.value = await findSolPilePda({
-      sessionId: expectSome(args.sessionId),
-    });
+    accounts.solPile.value = await findSolPilePda(
+      {
+        sessionId: getNonNullResolvedInstructionInput(
+          "sessionId",
+          args.sessionId
+        ),
+      },
+      { programAddress }
+    );
+  }
+  if (!accounts.instructionsSysvar.value) {
+    accounts.instructionsSysvar.value =
+      "Sysvar1nstructions1111111111111111111111111" as Address<"Sysvar1nstructions1111111111111111111111111">;
   }
   if (!accounts.token2022Program.value) {
     accounts.token2022Program.value =
@@ -392,92 +487,123 @@ export async function getInitializeInstructionAsync<
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
 
-  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.gm),
-      getAccountMeta(accounts.arbiter),
-      getAccountMeta(accounts.session),
-      getAccountMeta(accounts.hpVault),
-      getAccountMeta(accounts.hpMint),
-      getAccountMeta(accounts.rewardMint),
-      getAccountMeta(accounts.rewardVault),
-      getAccountMeta(accounts.rewardSource),
-      getAccountMeta(accounts.solPile),
-      getAccountMeta(accounts.equalityProof),
-      getAccountMeta(accounts.ciphertextValidityProof),
-      getAccountMeta(accounts.rangeProof),
-      getAccountMeta(accounts.pubkeyValidityProof),
-      getAccountMeta(accounts.zeroProof),
-      getAccountMeta(accounts.token2022Program),
-      getAccountMeta(accounts.rewardTokenProgram),
-      getAccountMeta(accounts.systemProgram),
+      getAccountMeta("gm", accounts.gm),
+      getAccountMeta("arbiter", accounts.arbiter),
+      getAccountMeta("session", accounts.session),
+      getAccountMeta("hpVault", accounts.hpVault),
+      getAccountMeta("hpMint", accounts.hpMint),
+      getAccountMeta("rewardMint", accounts.rewardMint),
+      getAccountMeta("rewardVault", accounts.rewardVault),
+      getAccountMeta("rewardSource", accounts.rewardSource),
+      getAccountMeta("solPile", accounts.solPile),
+      getAccountMeta("instructionsSysvar", accounts.instructionsSysvar),
+      getAccountMeta("token2022Program", accounts.token2022Program),
+      getAccountMeta("rewardTokenProgram", accounts.rewardTokenProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getInitializeInstructionDataEncoder().encode(
-      args as InitializeInstructionDataArgs,
+      args as InitializeInstructionDataArgs
     ),
     programAddress,
   } as InitializeInstruction<
     TProgramAddress,
-    TAccountGm,
-    TAccountArbiter,
-    TAccountSession,
-    TAccountHpVault,
-    TAccountHpMint,
-    TAccountRewardMint,
-    TAccountRewardVault,
-    TAccountRewardSource,
-    TAccountSolPile,
-    TAccountEqualityProof,
-    TAccountCiphertextValidityProof,
-    TAccountRangeProof,
-    TAccountPubkeyValidityProof,
-    TAccountZeroProof,
-    TAccountToken2022Program,
-    TAccountRewardTokenProgram,
-    TAccountSystemProgram
+    ResolvedInstructionAccountMeta<
+      TAccountGm,
+      InstructionAccountInputAddress<TAccountGm>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountArbiter,
+      InstructionAccountInputAddress<TAccountArbiter>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSession,
+      InstructionAccountInputAddress<TAccountSession>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpVault,
+      InstructionAccountInputAddress<TAccountHpVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpMint,
+      InstructionAccountInputAddress<TAccountHpMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardMint,
+      InstructionAccountInputAddress<TAccountRewardMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardVault,
+      InstructionAccountInputAddress<TAccountRewardVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardSource,
+      InstructionAccountInputAddress<TAccountRewardSource>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSolPile,
+      InstructionAccountInputAddress<TAccountSolPile>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountInstructionsSysvar,
+      InstructionAccountInputAddress<TAccountInstructionsSysvar>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountToken2022Program,
+      InstructionAccountInputAddress<TAccountToken2022Program>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardTokenProgram,
+      InstructionAccountInputAddress<TAccountRewardTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
+    >
   >);
 }
 
 export type InitializeInput<
-  TAccountGm extends string = string,
-  TAccountArbiter extends string = string,
-  TAccountSession extends string = string,
-  TAccountHpVault extends string = string,
-  TAccountHpMint extends string = string,
-  TAccountRewardMint extends string = string,
-  TAccountRewardVault extends string = string,
-  TAccountRewardSource extends string = string,
-  TAccountSolPile extends string = string,
-  TAccountEqualityProof extends string = string,
-  TAccountCiphertextValidityProof extends string = string,
-  TAccountRangeProof extends string = string,
-  TAccountPubkeyValidityProof extends string = string,
-  TAccountZeroProof extends string = string,
-  TAccountToken2022Program extends string = string,
-  TAccountRewardTokenProgram extends string = string,
-  TAccountSystemProgram extends string = string,
+  TAccountGm extends InstructionSignerInput = InstructionSignerInput,
+  TAccountArbiter extends InstructionSignerInput = InstructionSignerInput,
+  TAccountSession extends InstructionAccountInput = InstructionAccountInput,
+  TAccountHpVault extends InstructionAccountInput = InstructionAccountInput,
+  TAccountHpMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardVault extends InstructionAccountInput = InstructionAccountInput,
+  TAccountRewardSource extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSolPile extends InstructionAccountInput = InstructionAccountInput,
+  TAccountInstructionsSysvar extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountToken2022Program extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountRewardTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput =
+    InstructionAccountInput,
 > = {
-  gm: TransactionSigner<TAccountGm>;
-  arbiter: TransactionSigner<TAccountArbiter>;
-  session: Address<TAccountSession>;
-  hpVault: Address<TAccountHpVault>;
-  hpMint: Address<TAccountHpMint>;
-  rewardMint: Address<TAccountRewardMint>;
-  rewardVault: Address<TAccountRewardVault>;
-  rewardSource: Address<TAccountRewardSource>;
-  solPile: Address<TAccountSolPile>;
-  equalityProof: Address<TAccountEqualityProof>;
-  ciphertextValidityProof: Address<TAccountCiphertextValidityProof>;
-  rangeProof: Address<TAccountRangeProof>;
-  pubkeyValidityProof?: Address<TAccountPubkeyValidityProof>;
-  zeroProof?: Address<TAccountZeroProof>;
-  token2022Program?: Address<TAccountToken2022Program>;
-  rewardTokenProgram: Address<TAccountRewardTokenProgram>;
-  systemProgram?: Address<TAccountSystemProgram>;
+  gm: TAccountGm;
+  arbiter: TAccountArbiter;
+  session: TAccountSession;
+  hpVault: TAccountHpVault;
+  hpMint: TAccountHpMint;
+  rewardMint: TAccountRewardMint;
+  rewardVault: TAccountRewardVault;
+  rewardSource: TAccountRewardSource;
+  solPile: TAccountSolPile;
+  instructionsSysvar?: TAccountInstructionsSysvar;
+  token2022Program?: TAccountToken2022Program;
+  rewardTokenProgram: TAccountRewardTokenProgram;
+  systemProgram?: TAccountSystemProgram;
   sessionId: InitializeInstructionDataArgs["sessionId"];
   strikeFeeLamports: InitializeInstructionDataArgs["strikeFeeLamports"];
   rewardAmount: InitializeInstructionDataArgs["rewardAmount"];
+  pubkeyValidityProofInstructionOffset: InitializeInstructionDataArgs["pubkeyValidityProofInstructionOffset"];
+  equalityProofInstructionOffset: InitializeInstructionDataArgs["equalityProofInstructionOffset"];
+  ciphertextValidityProofInstructionOffset: InitializeInstructionDataArgs["ciphertextValidityProofInstructionOffset"];
+  rangeProofInstructionOffset: InitializeInstructionDataArgs["rangeProofInstructionOffset"];
   decryptableZero: InitializeInstructionDataArgs["decryptableZero"];
   newDecryptableSupply: InitializeInstructionDataArgs["newDecryptableSupply"];
   mintAmountAuditorCiphertextLo: InitializeInstructionDataArgs["mintAmountAuditorCiphertextLo"];
@@ -487,23 +613,19 @@ export type InitializeInput<
 };
 
 export function getInitializeInstruction<
-  TAccountGm extends string,
-  TAccountArbiter extends string,
-  TAccountSession extends string,
-  TAccountHpVault extends string,
-  TAccountHpMint extends string,
-  TAccountRewardMint extends string,
-  TAccountRewardVault extends string,
-  TAccountRewardSource extends string,
-  TAccountSolPile extends string,
-  TAccountEqualityProof extends string,
-  TAccountCiphertextValidityProof extends string,
-  TAccountRangeProof extends string,
-  TAccountPubkeyValidityProof extends string,
-  TAccountZeroProof extends string,
-  TAccountToken2022Program extends string,
-  TAccountRewardTokenProgram extends string,
-  TAccountSystemProgram extends string,
+  TAccountGm extends InstructionSignerInput,
+  TAccountArbiter extends InstructionSignerInput,
+  TAccountSession extends InstructionAccountInput,
+  TAccountHpVault extends InstructionAccountInput,
+  TAccountHpMint extends InstructionAccountInput,
+  TAccountRewardMint extends InstructionAccountInput,
+  TAccountRewardVault extends InstructionAccountInput,
+  TAccountRewardSource extends InstructionAccountInput,
+  TAccountSolPile extends InstructionAccountInput,
+  TAccountInstructionsSysvar extends InstructionAccountInput,
+  TAccountToken2022Program extends InstructionAccountInput,
+  TAccountRewardTokenProgram extends InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof PINATA_PROGRAM_ADDRESS,
 >(
   input: InitializeInput<
@@ -516,80 +638,146 @@ export function getInitializeInstruction<
     TAccountRewardVault,
     TAccountRewardSource,
     TAccountSolPile,
-    TAccountEqualityProof,
-    TAccountCiphertextValidityProof,
-    TAccountRangeProof,
-    TAccountPubkeyValidityProof,
-    TAccountZeroProof,
+    TAccountInstructionsSysvar,
     TAccountToken2022Program,
     TAccountRewardTokenProgram,
     TAccountSystemProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: { programAddress?: TProgramAddress }
 ): InitializeInstruction<
   TProgramAddress,
-  TAccountGm,
-  TAccountArbiter,
-  TAccountSession,
-  TAccountHpVault,
-  TAccountHpMint,
-  TAccountRewardMint,
-  TAccountRewardVault,
-  TAccountRewardSource,
-  TAccountSolPile,
-  TAccountEqualityProof,
-  TAccountCiphertextValidityProof,
-  TAccountRangeProof,
-  TAccountPubkeyValidityProof,
-  TAccountZeroProof,
-  TAccountToken2022Program,
-  TAccountRewardTokenProgram,
-  TAccountSystemProgram
+  ResolvedInstructionAccountMeta<
+    TAccountGm,
+    InstructionAccountInputAddress<TAccountGm>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountArbiter,
+    InstructionAccountInputAddress<TAccountArbiter>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountSession,
+    InstructionAccountInputAddress<TAccountSession>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountHpVault,
+    InstructionAccountInputAddress<TAccountHpVault>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountHpMint,
+    InstructionAccountInputAddress<TAccountHpMint>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountRewardMint,
+    InstructionAccountInputAddress<TAccountRewardMint>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountRewardVault,
+    InstructionAccountInputAddress<TAccountRewardVault>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountRewardSource,
+    InstructionAccountInputAddress<TAccountRewardSource>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountSolPile,
+    InstructionAccountInputAddress<TAccountSolPile>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountInstructionsSysvar,
+    InstructionAccountInputAddress<TAccountInstructionsSysvar>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountToken2022Program,
+    InstructionAccountInputAddress<TAccountToken2022Program>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountRewardTokenProgram,
+    InstructionAccountInputAddress<TAccountRewardTokenProgram>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountSystemProgram,
+    InstructionAccountInputAddress<TAccountSystemProgram>
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? PINATA_PROGRAM_ADDRESS;
 
+  // Account meta helper.
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+
   // Original accounts.
   const originalAccounts = {
-    gm: { value: input.gm ?? null, isWritable: true },
-    arbiter: { value: input.arbiter ?? null, isWritable: false },
-    session: { value: input.session ?? null, isWritable: true },
-    hpVault: { value: input.hpVault ?? null, isWritable: true },
-    hpMint: { value: input.hpMint ?? null, isWritable: true },
-    rewardMint: { value: input.rewardMint ?? null, isWritable: false },
-    rewardVault: { value: input.rewardVault ?? null, isWritable: true },
-    rewardSource: { value: input.rewardSource ?? null, isWritable: true },
-    solPile: { value: input.solPile ?? null, isWritable: true },
-    equalityProof: { value: input.equalityProof ?? null, isWritable: false },
-    ciphertextValidityProof: {
-      value: input.ciphertextValidityProof ?? null,
+    gm: { value: input.gm ?? null, isSigner: true, isWritable: true },
+    arbiter: {
+      value: input.arbiter ?? null,
+      isSigner: true,
       isWritable: false,
     },
-    rangeProof: { value: input.rangeProof ?? null, isWritable: false },
-    pubkeyValidityProof: {
-      value: input.pubkeyValidityProof ?? null,
+    session: {
+      value: input.session ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    hpVault: {
+      value: input.hpVault ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    hpMint: { value: input.hpMint ?? null, isSigner: false, isWritable: true },
+    rewardMint: {
+      value: input.rewardMint ?? null,
+      isSigner: false,
       isWritable: false,
     },
-    zeroProof: { value: input.zeroProof ?? null, isWritable: false },
+    rewardVault: {
+      value: input.rewardVault ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    rewardSource: {
+      value: input.rewardSource ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    solPile: {
+      value: input.solPile ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    instructionsSysvar: {
+      value: input.instructionsSysvar ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     token2022Program: {
       value: input.token2022Program ?? null,
+      isSigner: false,
       isWritable: false,
     },
     rewardTokenProgram: {
       value: input.rewardTokenProgram ?? null,
+      isSigner: false,
       isWritable: false,
     },
-    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    systemProgram: {
+      value: input.systemProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.instructionsSysvar.value) {
+    accounts.instructionsSysvar.value =
+      "Sysvar1nstructions1111111111111111111111111" as Address<"Sysvar1nstructions1111111111111111111111111">;
+  }
   if (!accounts.token2022Program.value) {
     accounts.token2022Program.value =
       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" as Address<"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb">;
@@ -599,50 +787,80 @@ export function getInitializeInstruction<
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
 
-  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.gm),
-      getAccountMeta(accounts.arbiter),
-      getAccountMeta(accounts.session),
-      getAccountMeta(accounts.hpVault),
-      getAccountMeta(accounts.hpMint),
-      getAccountMeta(accounts.rewardMint),
-      getAccountMeta(accounts.rewardVault),
-      getAccountMeta(accounts.rewardSource),
-      getAccountMeta(accounts.solPile),
-      getAccountMeta(accounts.equalityProof),
-      getAccountMeta(accounts.ciphertextValidityProof),
-      getAccountMeta(accounts.rangeProof),
-      getAccountMeta(accounts.pubkeyValidityProof),
-      getAccountMeta(accounts.zeroProof),
-      getAccountMeta(accounts.token2022Program),
-      getAccountMeta(accounts.rewardTokenProgram),
-      getAccountMeta(accounts.systemProgram),
+      getAccountMeta("gm", accounts.gm),
+      getAccountMeta("arbiter", accounts.arbiter),
+      getAccountMeta("session", accounts.session),
+      getAccountMeta("hpVault", accounts.hpVault),
+      getAccountMeta("hpMint", accounts.hpMint),
+      getAccountMeta("rewardMint", accounts.rewardMint),
+      getAccountMeta("rewardVault", accounts.rewardVault),
+      getAccountMeta("rewardSource", accounts.rewardSource),
+      getAccountMeta("solPile", accounts.solPile),
+      getAccountMeta("instructionsSysvar", accounts.instructionsSysvar),
+      getAccountMeta("token2022Program", accounts.token2022Program),
+      getAccountMeta("rewardTokenProgram", accounts.rewardTokenProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getInitializeInstructionDataEncoder().encode(
-      args as InitializeInstructionDataArgs,
+      args as InitializeInstructionDataArgs
     ),
     programAddress,
   } as InitializeInstruction<
     TProgramAddress,
-    TAccountGm,
-    TAccountArbiter,
-    TAccountSession,
-    TAccountHpVault,
-    TAccountHpMint,
-    TAccountRewardMint,
-    TAccountRewardVault,
-    TAccountRewardSource,
-    TAccountSolPile,
-    TAccountEqualityProof,
-    TAccountCiphertextValidityProof,
-    TAccountRangeProof,
-    TAccountPubkeyValidityProof,
-    TAccountZeroProof,
-    TAccountToken2022Program,
-    TAccountRewardTokenProgram,
-    TAccountSystemProgram
+    ResolvedInstructionAccountMeta<
+      TAccountGm,
+      InstructionAccountInputAddress<TAccountGm>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountArbiter,
+      InstructionAccountInputAddress<TAccountArbiter>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSession,
+      InstructionAccountInputAddress<TAccountSession>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpVault,
+      InstructionAccountInputAddress<TAccountHpVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountHpMint,
+      InstructionAccountInputAddress<TAccountHpMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardMint,
+      InstructionAccountInputAddress<TAccountRewardMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardVault,
+      InstructionAccountInputAddress<TAccountRewardVault>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardSource,
+      InstructionAccountInputAddress<TAccountRewardSource>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSolPile,
+      InstructionAccountInputAddress<TAccountSolPile>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountInstructionsSysvar,
+      InstructionAccountInputAddress<TAccountInstructionsSysvar>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountToken2022Program,
+      InstructionAccountInputAddress<TAccountToken2022Program>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountRewardTokenProgram,
+      InstructionAccountInputAddress<TAccountRewardTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
+    >
   >);
 }
 
@@ -661,14 +879,10 @@ export type ParsedInitializeInstruction<
     rewardVault: TAccountMetas[6];
     rewardSource: TAccountMetas[7];
     solPile: TAccountMetas[8];
-    equalityProof: TAccountMetas[9];
-    ciphertextValidityProof: TAccountMetas[10];
-    rangeProof: TAccountMetas[11];
-    pubkeyValidityProof?: TAccountMetas[12] | undefined;
-    zeroProof?: TAccountMetas[13] | undefined;
-    token2022Program: TAccountMetas[14];
-    rewardTokenProgram: TAccountMetas[15];
-    systemProgram: TAccountMetas[16];
+    instructionsSysvar: TAccountMetas[9];
+    token2022Program: TAccountMetas[10];
+    rewardTokenProgram: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
   };
   data: InitializeInstructionData;
 };
@@ -679,23 +893,22 @@ export function parseInitializeInstruction<
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
-    InstructionWithData<ReadonlyUint8Array>,
+    InstructionWithData<ReadonlyUint8Array>
 ): ParsedInitializeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 17) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+  if (instruction.accounts.length < 13) {
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 13,
+      }
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {
     const accountMeta = (instruction.accounts as TAccountMetas)[accountIndex]!;
     accountIndex += 1;
     return accountMeta;
-  };
-  const getNextOptionalAccount = () => {
-    const accountMeta = getNextAccount();
-    return accountMeta.address === PINATA_PROGRAM_ADDRESS
-      ? undefined
-      : accountMeta;
   };
   return {
     programAddress: instruction.programAddress,
@@ -709,11 +922,7 @@ export function parseInitializeInstruction<
       rewardVault: getNextAccount(),
       rewardSource: getNextAccount(),
       solPile: getNextAccount(),
-      equalityProof: getNextAccount(),
-      ciphertextValidityProof: getNextAccount(),
-      rangeProof: getNextAccount(),
-      pubkeyValidityProof: getNextOptionalAccount(),
-      zeroProof: getNextOptionalAccount(),
+      instructionsSysvar: getNextAccount(),
       token2022Program: getNextAccount(),
       rewardTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),

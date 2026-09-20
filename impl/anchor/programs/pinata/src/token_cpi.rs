@@ -16,21 +16,18 @@ use spl_token_2022_interface::{
                 ApplyPendingBalanceData, ConfidentialTransferInstruction,
                 ConfigureAccountInstructionData,
             },
-            ConfidentialTransferAccount, ConfidentialTransferMint, DecryptableBalance,
+            ConfidentialTransferMint, DecryptableBalance,
             DEFAULT_MAXIMUM_PENDING_BALANCE_CREDIT_COUNTER,
         },
         BaseStateWithExtensions, ExtensionType, StateWithExtensions,
     },
     instruction::{initialize_account3, reallocate, TokenInstruction},
-    state::{Account as TokenAccountState, Mint as TokenMint},
+    state::Mint as TokenMint,
 };
 
 use crate::errors::PinataError;
 
 const TOKEN_ACCOUNT_BASE_LEN: usize = 165;
-
-const ZERO_CIPHERTEXT_PROOF_TYPE: u8 = 1;
-const ZERO_PROOF_CONTEXT_LEN: usize = 129;
 
 pub fn needs_hp_vault_create(hp_vault: &AccountInfo) -> bool {
     hp_vault.lamports() == 0
@@ -64,46 +61,16 @@ pub fn assert_hp_mint(hp_mint: &AccountInfo, arbiter: &Pubkey) -> Result<()> {
     Ok(())
 }
 
-pub fn bind_zero_proof(zero_proof: &AccountInfo, hp_vault: &AccountInfo) -> Result<()> {
-    let proof_data = zero_proof.try_borrow_data()?;
-    require!(
-        proof_data.len() >= ZERO_PROOF_CONTEXT_LEN,
-        PinataError::InvalidZeroProof
-    );
-    require!(
-        proof_data[32] == ZERO_CIPHERTEXT_PROOF_TYPE,
-        PinataError::InvalidZeroProof
-    );
-    let proof_pubkey = &proof_data[33..65];
-    let proof_ciphertext = &proof_data[65..129];
-
-    let vault_data = hp_vault.try_borrow_data()?;
-    let vault = StateWithExtensions::<TokenAccountState>::unpack(&vault_data)
-        .map_err(|_| error!(PinataError::InvalidZeroProof))?;
-    let ct = vault
-        .get_extension::<ConfidentialTransferAccount>()
-        .map_err(|_| error!(PinataError::InvalidZeroProof))?;
-
-    require!(
-        proof_pubkey == bytes_of(&ct.elgamal_pubkey),
-        PinataError::ZeroProofMismatch
-    );
-    require!(
-        proof_ciphertext == bytes_of(&ct.available_balance),
-        PinataError::ZeroProofMismatch
-    );
-    Ok(())
-}
-
 pub fn create_hp_vault<'info>(
     gm: &AccountInfo<'info>,
     arbiter: &AccountInfo<'info>,
     hp_vault: &AccountInfo<'info>,
     hp_mint: &AccountInfo<'info>,
-    pubkey_validity_proof: &AccountInfo<'info>,
+    instructions_sysvar: &AccountInfo<'info>,
     token_2022_program: &AccountInfo<'info>,
     system_program: &AccountInfo<'info>,
     decryptable_zero: &[u8; 36],
+    pubkey_validity_proof_instruction_offset: i8,
     signer_seeds: &[&[u8]],
 ) -> Result<()> {
     let space = TOKEN_ACCOUNT_BASE_LEN;
@@ -162,14 +129,14 @@ pub fn create_hp_vault<'info>(
         decryptable_zero_balance,
         maximum_pending_balance_credit_counter: DEFAULT_MAXIMUM_PENDING_BALANCE_CREDIT_COUNTER
             .into(),
-        proof_instruction_offset: 0,
+        proof_instruction_offset: pubkey_validity_proof_instruction_offset,
     };
     let configure_ix = extension_ix(
         token_2022_program.key,
         vec![
             AccountMeta::new(*hp_vault.key, false),
             AccountMeta::new_readonly(*hp_mint.key, false),
-            AccountMeta::new_readonly(*pubkey_validity_proof.key, false),
+            AccountMeta::new_readonly(*instructions_sysvar.key, false),
             AccountMeta::new_readonly(*arbiter.key, true),
         ],
         TokenInstruction::ConfidentialTransferExtension,
@@ -181,7 +148,7 @@ pub fn create_hp_vault<'info>(
         &[
             hp_vault.clone(),
             hp_mint.clone(),
-            pubkey_validity_proof.clone(),
+            instructions_sysvar.clone(),
             arbiter.clone(),
             token_2022_program.clone(),
         ],
@@ -194,30 +161,29 @@ pub fn confidential_mint<'info>(
     hp_vault: &AccountInfo<'info>,
     hp_mint: &AccountInfo<'info>,
     arbiter: &AccountInfo<'info>,
-    equality_proof: &AccountInfo<'info>,
-    ciphertext_validity_proof: &AccountInfo<'info>,
-    range_proof: &AccountInfo<'info>,
+    instructions_sysvar: &AccountInfo<'info>,
     token_2022_program: &AccountInfo<'info>,
     new_decryptable_supply: &[u8; 36],
     mint_amount_auditor_ciphertext_lo: &[u8; 64],
     mint_amount_auditor_ciphertext_hi: &[u8; 64],
+    equality_proof_instruction_offset: i8,
+    ciphertext_validity_proof_instruction_offset: i8,
+    range_proof_instruction_offset: i8,
 ) -> Result<()> {
     let data = MintInstructionData {
         new_decryptable_supply: pod_read_unaligned(new_decryptable_supply),
         mint_amount_auditor_ciphertext_lo: pod_read_unaligned(mint_amount_auditor_ciphertext_lo),
         mint_amount_auditor_ciphertext_hi: pod_read_unaligned(mint_amount_auditor_ciphertext_hi),
-        equality_proof_instruction_offset: 0,
-        ciphertext_validity_proof_instruction_offset: 0,
-        range_proof_instruction_offset: 0,
+        equality_proof_instruction_offset,
+        ciphertext_validity_proof_instruction_offset,
+        range_proof_instruction_offset,
     };
     let mint_ix = extension_ix(
         token_2022_program.key,
         vec![
             AccountMeta::new(*hp_vault.key, false),
             AccountMeta::new(*hp_mint.key, false),
-            AccountMeta::new_readonly(*equality_proof.key, false),
-            AccountMeta::new_readonly(*ciphertext_validity_proof.key, false),
-            AccountMeta::new_readonly(*range_proof.key, false),
+            AccountMeta::new_readonly(*instructions_sysvar.key, false),
             AccountMeta::new_readonly(*arbiter.key, true),
         ],
         TokenInstruction::ConfidentialMintBurnExtension,
@@ -229,9 +195,7 @@ pub fn confidential_mint<'info>(
         &[
             hp_vault.clone(),
             hp_mint.clone(),
-            equality_proof.clone(),
-            ciphertext_validity_proof.clone(),
-            range_proof.clone(),
+            instructions_sysvar.clone(),
             arbiter.clone(),
             token_2022_program.clone(),
         ],

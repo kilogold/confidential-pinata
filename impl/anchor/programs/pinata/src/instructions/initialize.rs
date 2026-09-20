@@ -7,11 +7,15 @@ use crate::seeds::{SEED_HP_VAULT, SEED_REWARD_VAULT, SEED_SESSION, SEED_SOL_PILE
 use crate::state::{Session, SessionStatus};
 use crate::token_cpi;
 
-pub fn handler(
+pub fn initialize_handler(
     ctx: Context<Initialize>,
     session_id: String,
     strike_fee_lamports: u64,
     reward_amount: u64,
+    pubkey_validity_proof_instruction_offset: i8,
+    equality_proof_instruction_offset: i8,
+    ciphertext_validity_proof_instruction_offset: i8,
+    range_proof_instruction_offset: i8,
     decryptable_zero: [u8; 36],
     new_decryptable_supply: [u8; 36],
     mint_amount_auditor_ciphertext_lo: [u8; 64],
@@ -27,20 +31,20 @@ pub fn handler(
     require!(strike_fee_lamports > 0, PinataError::InvalidStrikeFee);
     require!(reward_amount > 0, PinataError::InvalidRewardAmount);
 
-    match ctx.accounts.session.status {
-        SessionStatus::Live => return err!(PinataError::PinataAlreadyExists),
-        SessionStatus::GameOver => reinit_gates(&ctx)?,
-        SessionStatus::Uninitialized => {}
-    }
+    require!(
+        equality_proof_instruction_offset < 0
+            && ciphertext_validity_proof_instruction_offset < 0
+            && range_proof_instruction_offset < 0,
+        PinataError::InvalidProofInstructionOffset
+    );
 
     token_cpi::assert_hp_mint(&ctx.accounts.hp_mint, ctx.accounts.arbiter.key)?;
 
     if token_cpi::needs_hp_vault_create(&ctx.accounts.hp_vault) {
-        let pubkey_validity = ctx
-            .accounts
-            .pubkey_validity_proof
-            .as_ref()
-            .ok_or(PinataError::MissingPubkeyValidityProof)?;
+        require!(
+            pubkey_validity_proof_instruction_offset < 0,
+            PinataError::MissingPubkeyValidityProof
+        );
         let bump = ctx.bumps.hp_vault;
         let seeds: &[&[u8]] = &[SEED_HP_VAULT, session_id_bytes, &[bump]];
         token_cpi::create_hp_vault(
@@ -48,25 +52,32 @@ pub fn handler(
             &ctx.accounts.arbiter.to_account_info(),
             &ctx.accounts.hp_vault,
             &ctx.accounts.hp_mint,
-            &pubkey_validity.to_account_info(),
+            &ctx.accounts.instructions_sysvar.to_account_info(),
             &ctx.accounts.token_2022_program.to_account_info(),
             &ctx.accounts.system_program.to_account_info(),
             &decryptable_zero,
+            pubkey_validity_proof_instruction_offset,
             seeds,
         )?;
+    } else {
+        require!(
+            pubkey_validity_proof_instruction_offset == 0,
+            PinataError::InvalidProofInstructionOffset
+        );
     }
 
     token_cpi::confidential_mint(
         &ctx.accounts.hp_vault,
         &ctx.accounts.hp_mint,
         &ctx.accounts.arbiter.to_account_info(),
-        &ctx.accounts.equality_proof,
-        &ctx.accounts.ciphertext_validity_proof,
-        &ctx.accounts.range_proof,
+        &ctx.accounts.instructions_sysvar.to_account_info(),
         &ctx.accounts.token_2022_program.to_account_info(),
         &new_decryptable_supply,
         &mint_amount_auditor_ciphertext_lo,
         &mint_amount_auditor_ciphertext_hi,
+        equality_proof_instruction_offset,
+        ciphertext_validity_proof_instruction_offset,
+        range_proof_instruction_offset,
     )?;
 
     token_cpi::apply_pending_balance_cpi(
@@ -77,6 +88,9 @@ pub fn handler(
         &new_decryptable_available_balance,
     )?;
 
+    // `sol_pile` is a System-owned PDA rather than an `init` account. It may
+    // already hold unsolicited lamports, so top up only its rent shortfall and
+    // preserve any existing balance instead of charging the GM twice.
     ensure_sol_pile_rent(&ctx)?;
 
     token_cpi::transfer_reward(
@@ -96,35 +110,10 @@ pub fn handler(
     session.strike_fee_lamports = strike_fee_lamports;
     session.reward_amount = reward_amount;
     session.status = SessionStatus::Live;
-    session.write_session_id(session_id_bytes);
     session.bump = ctx.bumps.session;
     session.hp_vault_bump = ctx.bumps.hp_vault;
     session.reward_vault_bump = ctx.bumps.reward_vault;
     session.sol_pile_bump = ctx.bumps.sol_pile;
-
-    Ok(())
-}
-
-fn reinit_gates(ctx: &Context<Initialize>) -> Result<()> {
-    if !token_cpi::needs_hp_vault_create(&ctx.accounts.hp_vault) {
-        let zero_proof = ctx
-            .accounts
-            .zero_proof
-            .as_ref()
-            .ok_or(PinataError::MissingZeroProof)?;
-        token_cpi::bind_zero_proof(&zero_proof.to_account_info(), &ctx.accounts.hp_vault)?;
-    }
-
-    require!(
-        ctx.accounts.reward_vault.amount == 0,
-        PinataError::RewardVaultNotEmpty
-    );
-
-    let sol_pile = &ctx.accounts.sol_pile;
-    if sol_pile.lamports() > 0 {
-        let rent = Rent::get()?.minimum_balance(sol_pile.data_len());
-        require!(sol_pile.lamports() == rent, PinataError::SolPileNotEmpty);
-    }
 
     Ok(())
 }
@@ -157,7 +146,7 @@ pub struct Initialize<'info> {
     pub arbiter: Signer<'info>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = gm,
         space = 8 + Session::INIT_SPACE,
         seeds = [SEED_SESSION, session_id.as_bytes()],
@@ -180,7 +169,7 @@ pub struct Initialize<'info> {
     pub reward_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = gm,
         token::mint = reward_mint,
         token::authority = session,
@@ -206,16 +195,9 @@ pub struct Initialize<'info> {
     )]
     pub sol_pile: UncheckedAccount<'info>,
 
-    /// CHECK: Pre-verified CiphertextCommitmentEquality context.
-    pub equality_proof: UncheckedAccount<'info>,
-    /// CHECK: Pre-verified BatchedGroupedCiphertext3HandlesValidity context.
-    pub ciphertext_validity_proof: UncheckedAccount<'info>,
-    /// CHECK: Pre-verified BatchedRangeProofU128 context.
-    pub range_proof: UncheckedAccount<'info>,
-    /// CHECK: Pre-verified PubkeyValidity context; required when creating hp_vault.
-    pub pubkey_validity_proof: Option<UncheckedAccount<'info>>,
-    /// CHECK: Pre-verified ZeroCiphertext context; required on Game Over re-init.
-    pub zero_proof: Option<UncheckedAccount<'info>>,
+    /// CHECK: Required by Token-2022 to load the preceding proof instructions.
+    #[account(address = solana_sdk_ids::sysvar::instructions::ID)]
+    pub instructions_sysvar: UncheckedAccount<'info>,
 
     /// CHECK: Token-2022 program.
     #[account(address = spl_token_2022_interface::id())]

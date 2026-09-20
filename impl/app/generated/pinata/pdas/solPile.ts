@@ -20,7 +20,7 @@ export type SolPileSeeds = {
 
 export async function findSolPilePda(
   seeds: SolPileSeeds,
-  config: { programAddress?: Address | undefined } = {},
+  config: { programAddress?: Address | undefined } = {}
 ): Promise<ProgramDerivedAddress> {
   const {
     programAddress = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">,
@@ -29,7 +29,7 @@ export async function findSolPilePda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(
-        new Uint8Array([115, 111, 108, 95, 112, 105, 108, 101]),
+        new Uint8Array([115, 111, 108, 95, 112, 105, 108, 101])
       ),
       getUtf8Encoder().encode(seeds.sessionId),
     ],

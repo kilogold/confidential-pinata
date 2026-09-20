@@ -31,7 +31,9 @@ export const SESSION_ID_MAX_BYTES = 24;
 export const HP_KEY_PUBLIC_SEED = new Uint8Array();
 
 /** HKDF salt / canonical derivation message prefix (`solana-conf-bal/v1`). */
-export const CONFIDENTIAL_HKDF_SALT = new TextEncoder().encode("solana-conf-bal/v1");
+export const CONFIDENTIAL_HKDF_SALT = new TextEncoder().encode(
+  "solana-conf-bal/v1"
+);
 
 /**
  * Closed interval `0..=HP_OFFSET_MAX` for the Initialize HP offset.

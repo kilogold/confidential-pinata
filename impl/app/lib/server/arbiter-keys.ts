@@ -1,6 +1,6 @@
 import { hkdfSync } from "node:crypto";
-import { ed25519 } from "@noble/curves/ed25519";
-import { bytesToNumberLE, numberToBytesLE } from "@noble/curves/utils";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { bytesToNumberLE, numberToBytesLE } from "@noble/curves/utils.js";
 import {
   createKeyPairSignerFromBytes,
   createSignableMessage,
@@ -66,6 +66,8 @@ export async function deriveArbiterKeys(
   );
   message.set(CONFIDENTIAL_HKDF_SALT, 0);
   message.set(HP_KEY_PUBLIC_SEED, CONFIDENTIAL_HKDF_SALT.length);
-  const { elgamal, aes } = keysFromSignature(await signMessage(signer, message));
+  const { elgamal, aes } = keysFromSignature(
+    await signMessage(signer, message)
+  );
   return { signer, elgamal, aes };
 }

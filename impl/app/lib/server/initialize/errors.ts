@@ -8,7 +8,7 @@ export type InitializeErrorCode =
   | "NOT_A_MINT"
   | "REWARD_SOURCE_MISSING"
   | "INSUFFICIENT_REWARD_BALANCE"
-  | "SESSION_ALREADY_LIVE"
+  | "SESSION_ALREADY_EXISTS"
   | "HP_BELOW_MINIMUM"
   | "JUPITER_SOL_PRICE_UNAVAILABLE"
   | "JUPITER_UNAVAILABLE"
@@ -17,6 +17,7 @@ export type InitializeErrorCode =
   | "RPC_UNAVAILABLE"
   | "PROOF_SETUP_FAILED"
   | "SIMULATION_FAILED"
+  | "TRANSACTION_V1_UNAVAILABLE"
   | "TRANSACTION_BUILD_FAILED";
 
 export class InitializeApiError extends Error {

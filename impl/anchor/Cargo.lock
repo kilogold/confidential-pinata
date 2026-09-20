@@ -967,6 +967,7 @@ dependencies = [
  "solana-address 2.6.1",
  "solana-instruction",
  "solana-program-option",
+ "solana-sdk-ids",
  "spl-token-2022-interface 3.1.1",
 ]
 

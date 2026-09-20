@@ -9,17 +9,47 @@
 import {
   assertIsInstructionWithAccounts,
   containsBytes,
+  extendClient,
   fixEncoderSize,
   getBytesEncoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_ACCOUNT,
+  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+  SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+  SolanaError,
   type Address,
+  type ClientWithRpc,
+  type ClientWithTransactionPlanning,
+  type ClientWithTransactionSending,
+  type ExtendedClient,
+  type GetAccountInfoApi,
+  type GetMultipleAccountsApi,
   type Instruction,
   type InstructionWithData,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
+  addSelfFetchFunctions,
+  addSelfPlanAndSendFunctions,
+  type SelfFetchFunctions,
+  type SelfPlanAndSendFunctions,
+} from "@solana/kit/program-client-core";
+import { getSessionCodec, type Session, type SessionArgs } from "../accounts";
+import {
+  getInitializeInstructionAsync,
+  getReinitializeInstructionAsync,
   parseInitializeInstruction,
+  parseReinitializeInstruction,
+  type InitializeAsyncInput,
   type ParsedInitializeInstruction,
+  type ParsedReinitializeInstruction,
+  type ReinitializeAsyncInput,
 } from "../instructions";
+import {
+  findHpVaultPda,
+  findRewardVaultPda,
+  findSessionPda,
+  findSolPilePda,
+} from "../pdas";
 
 export const PINATA_PROGRAM_ADDRESS =
   "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">;
@@ -29,57 +59,75 @@ export enum PinataAccount {
 }
 
 export function identifyPinataAccount(
-  account: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
+  account: { data: ReadonlyUint8Array } | ReadonlyUint8Array
 ): PinataAccount {
   const data = "data" in account ? account.data : account;
   if (
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([243, 81, 72, 115, 214, 188, 72, 144]),
+        new Uint8Array([243, 81, 72, 115, 214, 188, 72, 144])
       ),
-      0,
+      0
     )
   ) {
     return PinataAccount.Session;
   }
-  throw new Error(
-    "The provided account could not be identified as a pinata account.",
+  throw new SolanaError(
+    SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_ACCOUNT,
+    { accountData: data, programName: "pinata" }
   );
 }
 
 export enum PinataInstruction {
   Initialize,
+  Reinitialize,
 }
 
 export function identifyPinataInstruction(
-  instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
+  instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array
 ): PinataInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
   if (
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]),
+        new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237])
       ),
-      0,
+      0
     )
   ) {
     return PinataInstruction.Initialize;
   }
-  throw new Error(
-    "The provided instruction could not be identified as a pinata instruction.",
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([135, 255, 205, 161, 223, 162, 94, 137])
+      ),
+      0
+    )
+  ) {
+    return PinataInstruction.Reinitialize;
+  }
+  throw new SolanaError(
+    SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+    { instructionData: data, programName: "pinata" }
   );
 }
 
 export type ParsedPinataInstruction<
   TProgram extends string = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur",
-> = {
-  instructionType: PinataInstruction.Initialize;
-} & ParsedInitializeInstruction<TProgram>;
+> =
+  | ({
+      instructionType: PinataInstruction.Initialize;
+    } & ParsedInitializeInstruction<TProgram>)
+  | ({
+      instructionType: PinataInstruction.Reinitialize;
+    } & ParsedReinitializeInstruction<TProgram>);
 
 export function parsePinataInstruction<TProgram extends string>(
-  instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
+  instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>
 ): ParsedPinataInstruction<TProgram> {
   const instructionType = identifyPinataInstruction(instruction);
   switch (instructionType) {
@@ -90,9 +138,88 @@ export function parsePinataInstruction<TProgram extends string>(
         ...parseInitializeInstruction(instruction),
       };
     }
+    case PinataInstruction.Reinitialize: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: PinataInstruction.Reinitialize,
+        ...parseReinitializeInstruction(instruction),
+      };
+    }
     default:
-      throw new Error(
-        `Unrecognized instruction type: ${instructionType as string}`,
+      throw new SolanaError(
+        SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+        { instructionType: instructionType as string, programName: "pinata" }
       );
   }
+}
+
+export type PinataPlugin = {
+  accounts: PinataPluginAccounts;
+  instructions: PinataPluginInstructions;
+  pdas: PinataPluginPdas;
+  identifyAccount: typeof identifyPinataAccount;
+  identifyInstruction: typeof identifyPinataInstruction;
+  parseInstruction: typeof parsePinataInstruction;
+};
+
+export type PinataPluginAccounts = {
+  session: ReturnType<typeof getSessionCodec> &
+    SelfFetchFunctions<SessionArgs, Session>;
+};
+
+export type PinataPluginInstructions = {
+  initialize: (
+    input: InitializeAsyncInput
+  ) => ReturnType<typeof getInitializeInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  reinitialize: (
+    input: ReinitializeAsyncInput
+  ) => ReturnType<typeof getReinitializeInstructionAsync> &
+    SelfPlanAndSendFunctions;
+};
+
+export type PinataPluginPdas = {
+  session: typeof findSessionPda;
+  hpVault: typeof findHpVaultPda;
+  rewardVault: typeof findRewardVaultPda;
+  solPile: typeof findSolPilePda;
+};
+
+export type PinataPluginRequirements = ClientWithRpc<
+  GetAccountInfoApi & GetMultipleAccountsApi
+> &
+  ClientWithTransactionPlanning &
+  ClientWithTransactionSending;
+
+export function pinataProgram() {
+  return <T extends PinataPluginRequirements>(
+    client: T
+  ): ExtendedClient<T, { pinata: PinataPlugin }> => {
+    return extendClient(client, {
+      pinata: <PinataPlugin>{
+        accounts: { session: addSelfFetchFunctions(client, getSessionCodec()) },
+        instructions: {
+          initialize: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getInitializeInstructionAsync(input)
+            ),
+          reinitialize: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getReinitializeInstructionAsync(input)
+            ),
+        },
+        pdas: {
+          session: findSessionPda,
+          hpVault: findHpVaultPda,
+          rewardVault: findRewardVaultPda,
+          solPile: findSolPilePda,
+        },
+        identifyAccount: identifyPinataAccount,
+        identifyInstruction: identifyPinataInstruction,
+        parseInstruction: parsePinataInstruction,
+      },
+    });
+  };
 }

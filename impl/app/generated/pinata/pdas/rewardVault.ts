@@ -20,7 +20,7 @@ export type RewardVaultSeeds = {
 
 export async function findRewardVaultPda(
   seeds: RewardVaultSeeds,
-  config: { programAddress?: Address | undefined } = {},
+  config: { programAddress?: Address | undefined } = {}
 ): Promise<ProgramDerivedAddress> {
   const {
     programAddress = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">,
@@ -31,7 +31,7 @@ export async function findRewardVaultPda(
       getBytesEncoder().encode(
         new Uint8Array([
           114, 101, 119, 97, 114, 100, 95, 118, 97, 117, 108, 116,
-        ]),
+        ])
       ),
       getUtf8Encoder().encode(seeds.sessionId),
     ],

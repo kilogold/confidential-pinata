@@ -20,7 +20,7 @@ export type SessionSeeds = {
 
 export async function findSessionPda(
   seeds: SessionSeeds,
-  config: { programAddress?: Address | undefined } = {},
+  config: { programAddress?: Address | undefined } = {}
 ): Promise<ProgramDerivedAddress> {
   const {
     programAddress = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur" as Address<"Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur">,
@@ -29,7 +29,7 @@ export async function findSessionPda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(
-        new Uint8Array([115, 101, 115, 115, 105, 111, 110]),
+        new Uint8Array([115, 101, 115, 115, 105, 111, 110])
       ),
       getUtf8Encoder().encode(seeds.sessionId),
     ],

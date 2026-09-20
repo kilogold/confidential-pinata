@@ -20,7 +20,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 
 - **Landing** — Game Master (Init, Close) and Player (Register, Strike) actions
 - **Wallet connection** via wallet-standard with auto-discovery and dropdown UI
-- **Sequential Initialize submission** — the backend returns GM-funded, partially signed proof-setup transactions followed by Initialize; the wallet simulates, sends, and confirms each transaction in order
+- **Atomic Initialize submission** — the backend returns one partially signed transaction-v1 message containing inline proof instructions and Initialize; the GM wallet signs, sends, and confirms it
 - **Cluster switching** — devnet, testnet, mainnet, and localnet from the header
 - **Toast notifications** with explorer links for every transaction
 - **Error handling** — human-readable messages for common Solana and program errors
@@ -57,7 +57,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 │   │   │   └── context.tsx     # WalletProvider + useWallet() hook
 │   │   ├── hooks/
 │   │   │   ├── use-balance.ts  # SWR-based balance fetching
-│   │   │   └── use-sign-and-send-partial-transactions.ts  # Ordered F0 wallet submission
+│   │   │   └── use-sign-and-send-partial-transaction.ts  # Atomic F0 wallet submission
 │   │   ├── cluster.ts          # Cluster endpoints + RPC factory
 │   │   ├── lamports.ts         # SOL/lamports conversion
 │   │   ├── send-transaction.ts # Transaction build + sign + send pipeline
@@ -71,16 +71,18 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 
 ## Local Development
 
-The Initialize API returns an ordered prepared sequence:
+The Initialize API returns one prepared transaction-v1 payload:
 
 ```ts
 {
-  transactions: string[];
+  transaction: string;
   lastValidBlockHeight: string;
 }
 ```
 
-Every transaction is already partially signed by its available backend signers. The connected GM wallet remains the fee payer and submits the original serialized bytes through Wallet Standard. If the sequence stops after some proof transactions confirm, v1 reports the partial completion but does not clean up or resume the GM-funded proof-context or proof-data record accounts; that requirement remains open in [flows.md](../docs/flows.md) **O1**.
+The transaction is already partially signed by the arbiter. It contains inline ZK proof instructions followed by Initialize and creates no proof-context or proof-data record accounts. The connected GM wallet remains the fee payer and submits the original serialized bytes through Wallet Standard. The backend requires transaction v1 support on the configured cluster, estimates compute and loaded-account-data limits, verifies the 4096-byte wire limit, and simulates the exact partially signed bytes before returning them. The frontend does not repeat simulation; the wallet may perform its own preview or simulation.
+
+Reinitialize is present in the generated client as a dedicated instruction but currently fails closed without changing state. Its full `GameOver → Live` behavior remains open in [flows.md](../docs/flows.md) **O2**.
 
 To test against a local validator instead of devnet:
 

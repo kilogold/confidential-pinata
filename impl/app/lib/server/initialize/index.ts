@@ -21,8 +21,8 @@ import {
 import { deriveArbiterKeys } from "../arbiter-keys";
 import type { SolanaRpc } from "../rpc";
 import {
-  buildPartialInitializeTransactions,
-  type PreparedInitializeTransactions,
+  buildPartialInitializeTransaction,
+  type PreparedInitializeTransaction,
 } from "./build";
 import { InitializeApiError } from "./errors";
 import { drawHp } from "./hp";
@@ -34,7 +34,7 @@ import {
   parseStrikeFeeLamports,
 } from "./validate";
 
-export type InitializeSuccess = PreparedInitializeTransactions;
+export type InitializeSuccess = PreparedInitializeTransaction;
 
 async function rpcCall<T>(fn: () => Promise<T>): Promise<T> {
   try {
@@ -181,19 +181,17 @@ export async function orchestrateInitialize(
   const [sessionPda] = await findSessionPda({ sessionId: input.sessionId });
   const [hpVault] = await findHpVaultPda({ sessionId: input.sessionId });
   const session = await rpcCall(() => fetchMaybeSession(rpc, sessionPda));
-  if (session.exists && session.data.status === SessionStatus.Live) {
+  if (session.exists) {
     throw new InitializeApiError(
-      "SESSION_ALREADY_LIVE",
-      "A live piñata already exists for this session ID",
+      "SESSION_ALREADY_EXISTS",
+      session.data.status === SessionStatus.Live
+        ? "A live piñata already exists for this session ID"
+        : "This session ID is GameOver; use Reinitialize when it is implemented",
       { field: "sessionId" }
     );
   }
 
   const needsVaultCreate = await hpVaultNeedsCreate(rpc, hpVault);
-  const needsZeroProof =
-    session.exists &&
-    session.data.status === SessionStatus.GameOver &&
-    !needsVaultCreate;
 
   const rewardUiAmount = Number(input.rewardAmountUi);
   const quote = await quoteRewardInSol(input.rewardMint, rewardUiAmount);
@@ -204,14 +202,12 @@ export async function orchestrateInitialize(
     proofs = await generateInitializeProofs({
       rpc,
       payer: createNoopSigner(input.gm),
-      authority: keys.signer,
       elgamal: keys.elgamal,
       aes: keys.aes,
       hpMint: env.hpMint,
       hpVault,
       hp,
       needsVaultCreate,
-      needsZeroProof,
     });
   } catch (err) {
     if (err instanceof InitializeApiError) throw err;
@@ -224,7 +220,7 @@ export async function orchestrateInitialize(
     );
   }
 
-  return await buildPartialInitializeTransactions({
+  return await buildPartialInitializeTransaction({
     rpc,
     gm: input.gm,
     arbiter: keys.signer,

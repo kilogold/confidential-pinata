@@ -4,7 +4,13 @@
     "js": [
       {
         "from": "@codama/renderers-js",
-        "args": ["./app/generated/pinata"]
+        "args": [
+          "./app/generated",
+          {
+            "generatedFolder": "pinata",
+            "kitImportStrategy": "rootOnly"
+          }
+        ]
       }
     ]
   }

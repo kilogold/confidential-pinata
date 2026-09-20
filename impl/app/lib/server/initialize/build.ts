@@ -1,33 +1,101 @@
 import {
+  address,
+  appendTransactionMessageInstructions,
   assertIsTransactionWithinSizeLimit,
   createNoopSigner,
   createTransactionMessage,
-  createTransactionPlanner,
-  flattenTransactionPlan,
+  estimateResourceLimitsFactory,
+  fillTransactionMessageProvisoryResourceLimits,
   getBase64EncodedWireTransaction,
-  nonDivisibleSequentialInstructionPlan,
+  getBase64Encoder,
+  getOptionDecoder,
+  getU64Decoder,
+  isSome,
   partiallySignTransactionMessageWithSigners,
   pipe,
-  sequentialInstructionPlan,
+  setTransactionMessageConfig,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   type Address,
   type KeyPairSigner,
 } from "@solana/kit";
-import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
 import { findAssociatedTokenPda } from "@solana-program/token";
 import { getInitializeInstructionAsync } from "@/app/generated/pinata";
-import { INITIALIZE_COMPUTE_UNIT_LIMIT } from "@/app/lib/constants";
 import type { SolanaRpc } from "../rpc";
 import { InitializeApiError } from "./errors";
 import type { GeneratedInitializeProofs } from "./proofs";
 
-export type PreparedInitializeTransactions = {
-  transactions: string[];
+const ENABLE_TX_V1_FEATURE = address(
+  "txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL"
+);
+const TRANSACTION_V1_PREFIX = 0x81;
+const MAX_COMPUTE_UNIT_LIMIT = 1_400_000;
+const MAX_LOADED_ACCOUNTS_DATA_SIZE = 64 * 1024 * 1024;
+const LOADED_ACCOUNTS_PAGE_SIZE = 32 * 1024;
+
+export type PreparedInitializeTransaction = {
+  transaction: string;
   lastValidBlockHeight: string;
 };
 
-export async function buildPartialInitializeTransactions(args: {
+async function assertTransactionV1Active(rpc: SolanaRpc): Promise<void> {
+  let value;
+  try {
+    ({ value } = await rpc
+      .getAccountInfo(ENABLE_TX_V1_FEATURE, { encoding: "base64" })
+      .send());
+  } catch {
+    throw new InitializeApiError(
+      "RPC_UNAVAILABLE",
+      "Could not check transaction-v1 activation",
+      { status: 502 }
+    );
+  }
+
+  if (!value) {
+    throw new InitializeApiError(
+      "TRANSACTION_V1_UNAVAILABLE",
+      "Transaction v1 is not active on the configured cluster",
+      { status: 503 }
+    );
+  }
+
+  try {
+    const activation = getOptionDecoder(getU64Decoder()).decode(
+      getBase64Encoder().encode(value.data[0])
+    );
+    if (!isSome(activation)) {
+      throw new Error("feature is inactive");
+    }
+  } catch {
+    throw new InitializeApiError(
+      "TRANSACTION_V1_UNAVAILABLE",
+      "Transaction v1 is not active on the configured cluster",
+      { status: 503 }
+    );
+  }
+}
+
+function withResourceHeadroom(estimate: {
+  computeUnitLimit: number;
+  loadedAccountsDataSizeLimit: number;
+}) {
+  const computeUnitLimit = Math.min(
+    MAX_COMPUTE_UNIT_LIMIT,
+    Math.ceil(estimate.computeUnitLimit * 1.1)
+  );
+  const loadedAccountsDataSizeLimit = Math.min(
+    MAX_LOADED_ACCOUNTS_DATA_SIZE,
+    (Math.ceil(
+      estimate.loadedAccountsDataSizeLimit / LOADED_ACCOUNTS_PAGE_SIZE
+    ) +
+      1) *
+      LOADED_ACCOUNTS_PAGE_SIZE
+  );
+  return { computeUnitLimit, loadedAccountsDataSizeLimit };
+}
+
+export async function buildPartialInitializeTransaction(args: {
   rpc: SolanaRpc;
   gm: Address;
   arbiter: KeyPairSigner;
@@ -38,7 +106,9 @@ export async function buildPartialInitializeTransactions(args: {
   rewardTokenProgram: Address;
   hpMint: Address;
   proofs: GeneratedInitializeProofs;
-}): Promise<PreparedInitializeTransactions> {
+}): Promise<PreparedInitializeTransaction> {
+  await assertTransactionV1Active(args.rpc);
+
   const [rewardSource] = await findAssociatedTokenPda({
     owner: args.gm,
     tokenProgram: args.rewardTokenProgram,
@@ -56,50 +126,22 @@ export async function buildPartialInitializeTransactions(args: {
     sessionId: args.sessionId,
     strikeFeeLamports: args.strikeFeeLamports,
     rewardAmount: args.rewardAmount,
-    equalityProof: args.proofs.accounts.equalityProof,
-    ciphertextValidityProof: args.proofs.accounts.ciphertextValidityProof,
-    rangeProof: args.proofs.accounts.rangeProof,
-    pubkeyValidityProof: args.proofs.accounts.pubkeyValidityProof,
-    zeroProof: args.proofs.accounts.zeroProof,
-    decryptableZero: args.proofs.accounts.decryptableZero,
-    newDecryptableSupply: args.proofs.accounts.newDecryptableSupply,
+    pubkeyValidityProofInstructionOffset: args.proofs.offsets.pubkeyValidity,
+    equalityProofInstructionOffset: args.proofs.offsets.equality,
+    ciphertextValidityProofInstructionOffset:
+      args.proofs.offsets.ciphertextValidity,
+    rangeProofInstructionOffset: args.proofs.offsets.range,
+    decryptableZero: args.proofs.data.decryptableZero,
+    newDecryptableSupply: args.proofs.data.newDecryptableSupply,
     mintAmountAuditorCiphertextLo:
-      args.proofs.accounts.mintAmountAuditorCiphertextLo,
+      args.proofs.data.mintAmountAuditorCiphertextLo,
     mintAmountAuditorCiphertextHi:
-      args.proofs.accounts.mintAmountAuditorCiphertextHi,
+      args.proofs.data.mintAmountAuditorCiphertextHi,
     expectedPendingBalanceCreditCounter:
-      args.proofs.accounts.expectedPendingBalanceCreditCounter,
+      args.proofs.data.expectedPendingBalanceCreditCounter,
     newDecryptableAvailableBalance:
-      args.proofs.accounts.newDecryptableAvailableBalance,
+      args.proofs.data.newDecryptableAvailableBalance,
   });
-
-  const computeUnitIx = getSetComputeUnitLimitInstruction({
-    units: INITIALIZE_COMPUTE_UNIT_LIMIT,
-  });
-
-  const instructionPlan = sequentialInstructionPlan([
-    args.proofs.instructionPlan,
-    nonDivisibleSequentialInstructionPlan([computeUnitIx, initializeIx]),
-  ]);
-
-  let transactionPlan;
-  try {
-    const planner = createTransactionPlanner({
-      createTransactionMessage: () =>
-        pipe(createTransactionMessage({ version: 0 }), (message) =>
-          setTransactionMessageFeePayerSigner(gmSigner, message)
-        ),
-    });
-    transactionPlan = await planner(instructionPlan);
-  } catch (err) {
-    throw new InitializeApiError(
-      "TRANSACTION_BUILD_FAILED",
-      err instanceof Error
-        ? err.message
-        : "Failed to plan Initialize transactions",
-      { status: 500 }
-    );
-  }
 
   let blockhash;
   try {
@@ -112,40 +154,65 @@ export async function buildPartialInitializeTransactions(args: {
     );
   }
 
-  let transactions: string[];
   try {
-    transactions = await Promise.all(
-      flattenTransactionPlan(transactionPlan).map(async ({ message }) => {
-        const messageWithLifetime = setTransactionMessageLifetimeUsingBlockhash(
-          blockhash,
+    const draft = pipe(
+      createTransactionMessage({ version: 1 }),
+      (message) => setTransactionMessageFeePayerSigner(gmSigner, message),
+      (message) =>
+        setTransactionMessageLifetimeUsingBlockhash(blockhash, message),
+      (message) =>
+        appendTransactionMessageInstructions(
+          [...args.proofs.instructions, initializeIx],
           message
-        );
-        const partial =
-          await partiallySignTransactionMessageWithSigners(messageWithLifetime);
-        assertIsTransactionWithinSizeLimit(partial);
-        return getBase64EncodedWireTransaction(partial);
-      })
+        ),
+      fillTransactionMessageProvisoryResourceLimits
     );
+
+    const estimate = await estimateResourceLimitsFactory({ rpc: args.rpc })(
+      draft
+    );
+    const message = setTransactionMessageConfig(
+      withResourceHeadroom(estimate),
+      draft
+    );
+    const partial = await partiallySignTransactionMessageWithSigners(message);
+    assertIsTransactionWithinSizeLimit(partial);
+
+    const transaction = getBase64EncodedWireTransaction(partial);
+    const bytes = getBase64Encoder().encode(transaction);
+    if (bytes[0] !== TRANSACTION_V1_PREFIX) {
+      throw new Error("Prepared transaction is not transaction v1");
+    }
+
+    const simulation = await args.rpc
+      .simulateTransaction(transaction, {
+        encoding: "base64",
+        sigVerify: false,
+      })
+      .send();
+    if (simulation.value.err) {
+      const logs = simulation.value.logs?.join("\n") ?? "";
+      throw new InitializeApiError(
+        "SIMULATION_FAILED",
+        logs.length > 0
+          ? `Initialize simulation failed: ${logs.slice(-1000)}`
+          : `Initialize simulation failed: ${JSON.stringify(simulation.value.err)}`,
+        { status: 500 }
+      );
+    }
+
+    return {
+      transaction,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight.toString(),
+    };
   } catch (err) {
+    if (err instanceof InitializeApiError) throw err;
     throw new InitializeApiError(
       "TRANSACTION_BUILD_FAILED",
       err instanceof Error
         ? err.message
-        : "Failed to partial-sign Initialize transactions",
+        : "Failed to build the atomic Initialize transaction",
       { status: 500 }
     );
   }
-
-  if (transactions.length === 0) {
-    throw new InitializeApiError(
-      "TRANSACTION_BUILD_FAILED",
-      "Initialize transaction plan was empty",
-      { status: 500 }
-    );
-  }
-
-  return {
-    transactions,
-    lastValidBlockHeight: blockhash.lastValidBlockHeight.toString(),
-  };
 }

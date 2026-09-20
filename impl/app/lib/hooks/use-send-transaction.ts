@@ -25,9 +25,7 @@ export function useSendTransaction() {
     if (ws?.url) {
       rpcOptions.rpcSubscriptionsUrl = ws.url;
     }
-    return createClient()
-        .use(payer(signer))
-        .use(solanaRpc(rpcOptions));
+    return createClient().use(payer(signer)).use(solanaRpc(rpcOptions));
   }, [cluster, signer]);
 
   const send = useCallback(

@@ -45,11 +45,11 @@ import {
   type SessionStatusArgs,
 } from "../types";
 
-export const SESSION_DISCRIMINATOR = new Uint8Array([
+export const SESSION_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
   243, 81, 72, 115, 214, 188, 72, 144,
 ]);
 
-export function getSessionDiscriminatorBytes() {
+export function getSessionDiscriminatorBytes(): ReadonlyUint8Array {
   return fixEncoderSize(getBytesEncoder(), 8).encode(SESSION_DISCRIMINATOR);
 }
 
@@ -61,8 +61,6 @@ export type Session = {
   strikeFeeLamports: bigint;
   rewardAmount: bigint;
   status: SessionStatus;
-  sessionId: ReadonlyUint8Array;
-  sessionIdLen: number;
   bump: number;
   hpVaultBump: number;
   rewardVaultBump: number;
@@ -76,8 +74,6 @@ export type SessionArgs = {
   strikeFeeLamports: number | bigint;
   rewardAmount: number | bigint;
   status: SessionStatusArgs;
-  sessionId: ReadonlyUint8Array;
-  sessionIdLen: number;
   bump: number;
   hpVaultBump: number;
   rewardVaultBump: number;
@@ -95,14 +91,12 @@ export function getSessionEncoder(): FixedSizeEncoder<SessionArgs> {
       ["strikeFeeLamports", getU64Encoder()],
       ["rewardAmount", getU64Encoder()],
       ["status", getSessionStatusEncoder()],
-      ["sessionId", fixEncoderSize(getBytesEncoder(), 24)],
-      ["sessionIdLen", getU8Encoder()],
       ["bump", getU8Encoder()],
       ["hpVaultBump", getU8Encoder()],
       ["rewardVaultBump", getU8Encoder()],
       ["solPileBump", getU8Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: SESSION_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: SESSION_DISCRIMINATOR })
   );
 }
 
@@ -116,8 +110,6 @@ export function getSessionDecoder(): FixedSizeDecoder<Session> {
     ["strikeFeeLamports", getU64Decoder()],
     ["rewardAmount", getU64Decoder()],
     ["status", getSessionStatusDecoder()],
-    ["sessionId", fixDecoderSize(getBytesDecoder(), 24)],
-    ["sessionIdLen", getU8Decoder()],
     ["bump", getU8Decoder()],
     ["hpVaultBump", getU8Decoder()],
     ["rewardVaultBump", getU8Decoder()],
@@ -131,24 +123,24 @@ export function getSessionCodec(): FixedSizeCodec<SessionArgs, Session> {
 }
 
 export function decodeSession<TAddress extends string = string>(
-  encodedAccount: EncodedAccount<TAddress>,
+  encodedAccount: EncodedAccount<TAddress>
 ): Account<Session, TAddress>;
 export function decodeSession<TAddress extends string = string>(
-  encodedAccount: MaybeEncodedAccount<TAddress>,
+  encodedAccount: MaybeEncodedAccount<TAddress>
 ): MaybeAccount<Session, TAddress>;
 export function decodeSession<TAddress extends string = string>(
-  encodedAccount: EncodedAccount<TAddress> | MaybeEncodedAccount<TAddress>,
+  encodedAccount: EncodedAccount<TAddress> | MaybeEncodedAccount<TAddress>
 ): Account<Session, TAddress> | MaybeAccount<Session, TAddress> {
   return decodeAccount(
     encodedAccount as MaybeEncodedAccount<TAddress>,
-    getSessionDecoder(),
+    getSessionDecoder()
   );
 }
 
 export async function fetchSession<TAddress extends string = string>(
   rpc: Parameters<typeof fetchEncodedAccount>[0],
   address: Address<TAddress>,
-  config?: FetchAccountConfig,
+  config?: FetchAccountConfig
 ): Promise<Account<Session, TAddress>> {
   const maybeAccount = await fetchMaybeSession(rpc, address, config);
   assertAccountExists(maybeAccount);
@@ -158,7 +150,7 @@ export async function fetchSession<TAddress extends string = string>(
 export async function fetchMaybeSession<TAddress extends string = string>(
   rpc: Parameters<typeof fetchEncodedAccount>[0],
   address: Address<TAddress>,
-  config?: FetchAccountConfig,
+  config?: FetchAccountConfig
 ): Promise<MaybeAccount<Session, TAddress>> {
   const maybeAccount = await fetchEncodedAccount(rpc, address, config);
   return decodeSession(maybeAccount);
@@ -167,7 +159,7 @@ export async function fetchMaybeSession<TAddress extends string = string>(
 export async function fetchAllSession(
   rpc: Parameters<typeof fetchEncodedAccounts>[0],
   addresses: Array<Address>,
-  config?: FetchAccountsConfig,
+  config?: FetchAccountsConfig
 ): Promise<Account<Session>[]> {
   const maybeAccounts = await fetchAllMaybeSession(rpc, addresses, config);
   assertAccountsExist(maybeAccounts);
@@ -177,12 +169,12 @@ export async function fetchAllSession(
 export async function fetchAllMaybeSession(
   rpc: Parameters<typeof fetchEncodedAccounts>[0],
   addresses: Array<Address>,
-  config?: FetchAccountsConfig,
+  config?: FetchAccountsConfig
 ): Promise<MaybeAccount<Session>[]> {
   const maybeAccounts = await fetchEncodedAccounts(rpc, addresses, config);
   return maybeAccounts.map((maybeAccount) => decodeSession(maybeAccount));
 }
 
 export function getSessionSize(): number {
-  return 150;
+  return 125;
 }

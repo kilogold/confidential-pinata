@@ -4,9 +4,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useWallet } from "../lib/wallet/context";
 import {
-  parsePreparedTransactionSequence,
-  useSignAndSendPartialTransactions,
-} from "../lib/hooks/use-sign-and-send-partial-transactions";
+  parsePreparedTransaction,
+  useSignAndSendPartialTransaction,
+} from "../lib/hooks/use-sign-and-send-partial-transaction";
 
 type InitializeErrorBody = {
   error?: {
@@ -19,7 +19,7 @@ type InitializeErrorBody = {
 export function GmInitialize({ enabled }: { enabled: boolean }) {
   const { wallet } = useWallet();
   const { signAndSend, isSending, progress } =
-    useSignAndSendPartialTransactions();
+    useSignAndSendPartialTransaction();
   const [rewardMint, setRewardMint] = useState("");
   const [rewardAmount, setRewardAmount] = useState("");
   const [strikeFeeSol, setStrikeFeeSol] = useState("");
@@ -49,8 +49,8 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
         toast.error(err.error?.message ?? "Initialize failed");
         return;
       }
-      const sequence = parsePreparedTransactionSequence(json);
-      await signAndSend(sequence);
+      const transaction = parsePreparedTransaction(json);
+      await signAndSend(transaction);
       toast.success("Initialize confirmed");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Initialize failed");
@@ -110,11 +110,13 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
         onClick={() => void onInitialize()}
         className="rounded-lg border border-neutral-400 bg-card px-5 py-2.5 text-sm font-medium shadow-xs transition enabled:hover:border-neutral-600 enabled:hover:bg-cream disabled:pointer-events-none dark:border-neutral-600 dark:enabled:hover:border-neutral-500"
       >
-        {progress
-          ? `Initializing ${progress.current}/${progress.total}…`
-          : busy
-            ? "Initializing…"
-            : "Initialize"}
+        {progress?.phase === "awaiting-wallet"
+          ? "Approve in wallet…"
+          : progress?.phase === "confirming"
+            ? "Confirming…"
+            : busy
+              ? "Initializing…"
+              : "Initialize"}
       </button>
     </div>
   );

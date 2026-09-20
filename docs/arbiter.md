@@ -30,27 +30,27 @@ Normative language follows RFC 2119.
 
 The v1 arbiter MUST be the arbiter webapp (frontend, backend, and Piñata program client as one participant), not a second extra process. That webapp is the primary client for GM and player wallets (**DEP4**).
 
-| Flow | Arbiter MUST |
-| --- | --- |
-| Attack | Participate in every Attack that mutates confidential HP: attach proofs and sign as vault authority. For the Terminal Attack, also choose and persist the selected index and nonce and supply the commitment. Not player-only. |
+| Flow   | Arbiter MUST                                                                                                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attack | Participate in every Attack that mutates confidential HP: attach proofs and sign as vault authority. For the Terminal Attack, also choose and persist the selected index and nonce and supply the commitment. Not player-only.     |
 | Settle | Reuse the persisted prototype result, scan successful Attack history to find the player assigned the selected index, construct Settle, and sign as configured arbiter authority. Never reroll because a requester refuses to sign. |
-| Close | Construct Close, including leftover-zero proof and vault-authority signature. Not GM-only-assembled. |
-| Keys | HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and prototype draw secrets live in the **backend** (**DEP2**, **DEP5**, **DEP6**). |
+| Close  | Construct Close, including leftover-zero proof and vault-authority signature. Not GM-only-assembled.                                                                                                                               |
+| Keys   | HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and prototype draw secrets live in the **backend** (**DEP2**, **DEP5**, **DEP6**).                                                                   |
 
 ### A2. Keys and HP plaintext
 
 These MUST live only in the backend:
 
-| Secret | Scope |
-| --- | --- |
-| HP ElGamal keypair | Encrypts every instance HP vault **and** the shared mint's confidential supply. Token-2022 still has two slots (account vs mint); v1 MUST configure both with this same ElGamal pubkey. **Derived** at runtime from the arbiter Solana authority keypair (ZK SDK / Token-2022 signer derivation). **Reused** across instances and sessions. MUST NOT be generated per instance. MUST NOT be a separate env secret. |
-| HP AES key | Decryptable available balance on every instance vault **and** decryptable supply on the mint. **Derived** from the same authority keypair (SDK domain-separated from ElGamal). v1 MUST use that one AES for both slots. **Reused.** MUST NOT be generated per instance. MUST NOT be a separate env secret. |
-| HP mint authority | Token-2022 mint signer. **Reused.** Stored in env. |
-| HP vault authority | Token-2022 signer for each instance's HP token account. **Reused.** MAY be the same keypair as mint authority. Simplest v1: that env keypair is both. |
-| HP draw and proof generation | Plaintext HP and remaining HP. |
-| Prototype raffle opening | Once selected: final `N`, selected index, and fresh secret nonce. Persisted through settlement. |
+| Secret                       | Scope                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| HP ElGamal keypair           | Encrypts every instance HP vault **and** the shared mint's confidential supply. Token-2022 still has two slots (account vs mint); v1 MUST configure both with this same ElGamal pubkey. **Derived** at runtime from the arbiter Solana authority keypair (ZK SDK / Token-2022 signer derivation). **Reused** across instances and sessions. MUST NOT be generated per instance. MUST NOT be a separate env secret. |
+| HP AES key                   | Decryptable available balance on every instance vault **and** decryptable supply on the mint. **Derived** from the same authority keypair (SDK domain-separated from ElGamal). v1 MUST use that one AES for both slots. **Reused.** MUST NOT be generated per instance. MUST NOT be a separate env secret.                                                                                                         |
+| HP mint authority            | Token-2022 mint signer. **Reused.** Stored in env.                                                                                                                                                                                                                                                                                                                                                                 |
+| HP vault authority           | Token-2022 signer for each instance's HP token account. **Reused.** MAY be the same keypair as mint authority. Simplest v1: that env keypair is both.                                                                                                                                                                                                                                                              |
+| HP draw and proof generation | Plaintext HP and remaining HP.                                                                                                                                                                                                                                                                                                                                                                                     |
+| Prototype raffle opening     | Once selected: final `N`, selected index, and fresh secret nonce. Persisted through settlement.                                                                                                                                                                                                                                                                                                                    |
 
-The arbiter MUST reuse the HP key material for every instance and Initialize, including a later session on the same piñata. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MUST be a PDA **address**; that is not custody of these keys.
+The arbiter MUST reuse the HP key material for every instance, first-session Initialize, and eventual Reinitialize. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MUST be a PDA **address**; that is not custody of these keys.
 
 v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
 
@@ -98,14 +98,14 @@ flowchart TB
   seq --> supply[ApplyPendingBurn then UpdateDecryptableSupply]
 ```
 
-| Step | Arbiter MUST |
-| --- | --- |
-| Burn | Attach Token-2022 proofs for homomorphic −1 on the HP vault. Partial-sign as **vault** authority (**DEP6**). Attack MUST CPI that burn (**D3**). MUST NOT PDA-sign it. |
-| Supply | Immediately after: `ApplyPendingBurn` then `UpdateDecryptableSupply`. Partial-sign both as **mint** authority (**DEP5**). These fold / refresh **shared-mint** supply. They are **not** the HP decrement. |
-| Normal Attack | If post-burn HP is nonzero, attach only the burn proofs. The attacking wallet receives the next chronological successful-Attack index and the instance remains `Live`. |
+| Step            | Arbiter MUST                                                                                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Burn            | Attach Token-2022 proofs for homomorphic −1 on the HP vault. Partial-sign as **vault** authority (**DEP6**). Attack MUST CPI that burn (**D3**). MUST NOT PDA-sign it.                                                                                                                 |
+| Supply          | Immediately after: `ApplyPendingBurn` then `UpdateDecryptableSupply`. Partial-sign both as **mint** authority (**DEP5**). These fold / refresh **shared-mint** supply. They are **not** the HP decrement.                                                                              |
+| Normal Attack   | If post-burn HP is nonzero, attach only the burn proofs. The attacking wallet receives the next chronological successful-Attack index and the instance remains `Live`.                                                                                                                 |
 | Terminal Attack | If post-burn HP is zero, attach `VerifyZeroCiphertext` for the post-burn vault `available_balance`, choose and persist the prototype selected index and nonce as described below, and supply their commitment. MUST NOT assemble a terminal burn without the zero proof or commitment. |
-| Payout | MUST NOT transfer reward or pile during Attack. Payout occurs only through `Settle`. |
-| Isolation | MUST NOT expose per-strike refusal to the GM. MUST NOT reveal exact HP, remaining HP, the realized offset, exact price quote, selected index, or nonce during play. The offset range `0..=5` is public. |
+| Payout          | MUST NOT transfer reward or pile during Attack. Payout occurs only through `Settle`.                                                                                                                                                                                                   |
+| Isolation       | MUST NOT expose per-strike refusal to the GM. MUST NOT reveal exact HP, remaining HP, the realized offset, exact price quote, selected index, or nonce during play. The offset range `0..=5` is public.                                                                                |
 
 A normal wallet signs the arbiter's already-partial-signed bytes and cannot omit the terminal proof by accident. Only a **malicious or exploited arbiter** can produce a last-HP burn with a valid signature set and no zero proof. That is a deliberately accepted trust assumption, in the same class as exclusive key custody (**A2**).
 
@@ -133,10 +133,10 @@ The GM MUST NOT read the backend: no HP ElGamal or AES keys, HP mint authority, 
 
 ### A7. Liveness versus censorship
 
-| Stall | Meaning |
-| --- | --- |
-| Full stall | Process down. Session liveness **is** arbiter uptime. |
-| Attack censorship | Refuse to prove or sign selected players' Attacks. Isolation (**A6**) is intended to prevent GM-directed selective censorship. |
+| Stall                 | Meaning                                                                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full stall            | Process down. Session liveness **is** arbiter uptime.                                                                                                                                                           |
+| Attack censorship     | Refuse to prove or sign selected players' Attacks. Isolation (**A6**) is intended to prevent GM-directed selective censorship.                                                                                  |
 | Settlement censorship | Refuse to build or sign `Settle`, or a requester refuses to countersign after seeing the result. Funds remain escrowed in `Drawing`. Another requester can overcome requester refusal, but not arbiter refusal. |
 
 Attack is **vulnerable on chain**: the ZK ElGamal Proof Program does not document a leftover-nonzero / zero-exclusive-range instruction (`VerifyBatchedRangeProofU*` is `[0, 2ⁿ)`, which includes 0). The program therefore cannot reject a last-HP `ConfidentialBurn` that omits `VerifyZeroCiphertext`. If a malicious or exploited arbiter submits that Attack, **D3** keeps the session `Live`: leftover encrypt(0), no `Drawing`, and further burns fail. `Settle`, Initialize, and Close remain unavailable.

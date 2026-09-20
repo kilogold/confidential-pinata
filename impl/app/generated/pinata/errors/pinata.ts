@@ -22,61 +22,49 @@ export const PINATA_ERROR__INVALID_SESSION_ID = 0x1771; // 6001
 export const PINATA_ERROR__INVALID_STRIKE_FEE = 0x1772; // 6002
 /** InvalidRewardAmount: reward amount must be greater than zero */
 export const PINATA_ERROR__INVALID_REWARD_AMOUNT = 0x1773; // 6003
-/** MissingZeroProof: zero-proof context is required to re-initialize */
-export const PINATA_ERROR__MISSING_ZERO_PROOF = 0x1774; // 6004
-/** InvalidZeroProof: zero-proof context is invalid */
-export const PINATA_ERROR__INVALID_ZERO_PROOF = 0x1775; // 6005
-/** ZeroProofMismatch: zero-proof does not match this HP vault */
-export const PINATA_ERROR__ZERO_PROOF_MISMATCH = 0x1776; // 6006
-/** RewardVaultNotEmpty: reward_vault must be empty or closed to re-initialize */
-export const PINATA_ERROR__REWARD_VAULT_NOT_EMPTY = 0x1777; // 6007
-/** SolPileNotEmpty: sol_pile must be empty or closed to re-initialize */
-export const PINATA_ERROR__SOL_PILE_NOT_EMPTY = 0x1778; // 6008
-/** MissingPubkeyValidityProof: pubkey-validity proof context is required to create the HP vault */
-export const PINATA_ERROR__MISSING_PUBKEY_VALIDITY_PROOF = 0x1779; // 6009
+/** MissingPubkeyValidityProof: pubkey-validity proof instruction is required to create the HP vault */
+export const PINATA_ERROR__MISSING_PUBKEY_VALIDITY_PROOF = 0x1774; // 6004
+/** InvalidProofInstructionOffset: proof instruction offsets must reference preceding instructions */
+export const PINATA_ERROR__INVALID_PROOF_INSTRUCTION_OFFSET = 0x1775; // 6005
 /** InvalidHpMint: HP mint is not a confidential Token-2022 mint */
-export const PINATA_ERROR__INVALID_HP_MINT = 0x177a; // 6010
+export const PINATA_ERROR__INVALID_HP_MINT = 0x1776; // 6006
 /** InvalidArbiterMintAuthority: arbiter must be the HP mint authority */
-export const PINATA_ERROR__INVALID_ARBITER_MINT_AUTHORITY = 0x177b; // 6011
+export const PINATA_ERROR__INVALID_ARBITER_MINT_AUTHORITY = 0x1777; // 6007
 /** Token2022Cpi: Token-2022 CPI failed */
-export const PINATA_ERROR__TOKEN2022_CPI = 0x177c; // 6012
+export const PINATA_ERROR__TOKEN2022_CPI = 0x1778; // 6008
+/** ReinitializeNotImplemented: reinitialize is not implemented */
+export const PINATA_ERROR__REINITIALIZE_NOT_IMPLEMENTED = 0x1779; // 6009
 
 export type PinataError =
   | typeof PINATA_ERROR__INVALID_ARBITER_MINT_AUTHORITY
   | typeof PINATA_ERROR__INVALID_HP_MINT
+  | typeof PINATA_ERROR__INVALID_PROOF_INSTRUCTION_OFFSET
   | typeof PINATA_ERROR__INVALID_REWARD_AMOUNT
   | typeof PINATA_ERROR__INVALID_SESSION_ID
   | typeof PINATA_ERROR__INVALID_STRIKE_FEE
-  | typeof PINATA_ERROR__INVALID_ZERO_PROOF
   | typeof PINATA_ERROR__MISSING_PUBKEY_VALIDITY_PROOF
-  | typeof PINATA_ERROR__MISSING_ZERO_PROOF
   | typeof PINATA_ERROR__PINATA_ALREADY_EXISTS
-  | typeof PINATA_ERROR__REWARD_VAULT_NOT_EMPTY
-  | typeof PINATA_ERROR__SOL_PILE_NOT_EMPTY
-  | typeof PINATA_ERROR__TOKEN2022_CPI
-  | typeof PINATA_ERROR__ZERO_PROOF_MISMATCH;
+  | typeof PINATA_ERROR__REINITIALIZE_NOT_IMPLEMENTED
+  | typeof PINATA_ERROR__TOKEN2022_CPI;
 
 let pinataErrorMessages: Record<PinataError, string> | undefined;
-if (process.env.NODE_ENV !== "production") {
+if (process.env["NODE_ENV"] !== "production") {
   pinataErrorMessages = {
     [PINATA_ERROR__INVALID_ARBITER_MINT_AUTHORITY]: `arbiter must be the HP mint authority`,
     [PINATA_ERROR__INVALID_HP_MINT]: `HP mint is not a confidential Token-2022 mint`,
+    [PINATA_ERROR__INVALID_PROOF_INSTRUCTION_OFFSET]: `proof instruction offsets must reference preceding instructions`,
     [PINATA_ERROR__INVALID_REWARD_AMOUNT]: `reward amount must be greater than zero`,
     [PINATA_ERROR__INVALID_SESSION_ID]: `session_id must be 1 to 24 bytes`,
     [PINATA_ERROR__INVALID_STRIKE_FEE]: `strike fee must be greater than zero`,
-    [PINATA_ERROR__INVALID_ZERO_PROOF]: `zero-proof context is invalid`,
-    [PINATA_ERROR__MISSING_PUBKEY_VALIDITY_PROOF]: `pubkey-validity proof context is required to create the HP vault`,
-    [PINATA_ERROR__MISSING_ZERO_PROOF]: `zero-proof context is required to re-initialize`,
+    [PINATA_ERROR__MISSING_PUBKEY_VALIDITY_PROOF]: `pubkey-validity proof instruction is required to create the HP vault`,
     [PINATA_ERROR__PINATA_ALREADY_EXISTS]: `piñata already exists`,
-    [PINATA_ERROR__REWARD_VAULT_NOT_EMPTY]: `reward_vault must be empty or closed to re-initialize`,
-    [PINATA_ERROR__SOL_PILE_NOT_EMPTY]: `sol_pile must be empty or closed to re-initialize`,
+    [PINATA_ERROR__REINITIALIZE_NOT_IMPLEMENTED]: `reinitialize is not implemented`,
     [PINATA_ERROR__TOKEN2022_CPI]: `Token-2022 CPI failed`,
-    [PINATA_ERROR__ZERO_PROOF_MISMATCH]: `zero-proof does not match this HP vault`,
   };
 }
 
 export function getPinataErrorMessage(code: PinataError): string {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env["NODE_ENV"] !== "production") {
     return (pinataErrorMessages as Record<PinataError, string>)[code];
   }
 
@@ -88,13 +76,13 @@ export function isPinataError<TProgramErrorCode extends PinataError>(
   transactionMessage: {
     instructions: Record<number, { programAddress: Address }>;
   },
-  code?: TProgramErrorCode,
+  code?: TProgramErrorCode
 ): error is SolanaError<typeof SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM> &
   Readonly<{ context: Readonly<{ code: TProgramErrorCode }> }> {
   return isProgramError<TProgramErrorCode>(
     error,
     transactionMessage,
     PINATA_PROGRAM_ADDRESS,
-    code,
+    code
   );
 }

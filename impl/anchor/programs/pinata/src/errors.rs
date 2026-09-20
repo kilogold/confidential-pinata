@@ -10,22 +10,16 @@ pub enum PinataError {
     InvalidStrikeFee,
     #[msg("reward amount must be greater than zero")]
     InvalidRewardAmount,
-    #[msg("zero-proof context is required to re-initialize")]
-    MissingZeroProof,
-    #[msg("zero-proof context is invalid")]
-    InvalidZeroProof,
-    #[msg("zero-proof does not match this HP vault")]
-    ZeroProofMismatch,
-    #[msg("reward_vault must be empty or closed to re-initialize")]
-    RewardVaultNotEmpty,
-    #[msg("sol_pile must be empty or closed to re-initialize")]
-    SolPileNotEmpty,
-    #[msg("pubkey-validity proof context is required to create the HP vault")]
+    #[msg("pubkey-validity proof instruction is required to create the HP vault")]
     MissingPubkeyValidityProof,
+    #[msg("proof instruction offsets must reference preceding instructions")]
+    InvalidProofInstructionOffset,
     #[msg("HP mint is not a confidential Token-2022 mint")]
     InvalidHpMint,
     #[msg("arbiter must be the HP mint authority")]
     InvalidArbiterMintAuthority,
     #[msg("Token-2022 CPI failed")]
     Token2022Cpi,
+    #[msg("reinitialize is not implemented")]
+    ReinitializeNotImplemented,
 }
