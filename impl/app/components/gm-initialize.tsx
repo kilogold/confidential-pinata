@@ -20,16 +20,22 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
   const { wallet } = useWallet();
   const { signAndSend, isSending, progress } =
     useSignAndSendPartialTransaction();
-  const [rewardMint, setRewardMint] = useState("");
-  const [rewardAmount, setRewardAmount] = useState("");
-  const [strikeFeeSol, setStrikeFeeSol] = useState("");
-  const [sessionId, setSessionId] = useState("");
+  const [rewardMint, setRewardMint] = useState(
+    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+  );
+  const [rewardAmount, setRewardAmount] = useState("5");
+  const [strikeFeeSol, setStrikeFeeSol] = useState("0.01");
+  const [sessionId, setSessionId] = useState("test");
   const [isRequesting, setIsRequesting] = useState(false);
 
   const busy = isRequesting || isSending;
 
   async function onInitialize() {
     if (!wallet || busy) return;
+    if (!wallet.supportedTransactionVersions.includes(1)) {
+      toast.error("This wallet does not support Solana transaction v1");
+      return;
+    }
     setIsRequesting(true);
     try {
       const response = await fetch("/api/initialize", {

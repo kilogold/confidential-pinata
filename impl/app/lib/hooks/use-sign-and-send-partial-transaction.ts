@@ -100,6 +100,9 @@ export function useSignAndSendPartialTransaction() {
       if (!wallet) {
         throw new Error("Wallet not connected");
       }
+      if (!wallet.supportedTransactionVersions.includes(1)) {
+        throw new Error("This wallet does not support Solana transaction v1");
+      }
       if (!wallet.sendTransaction) {
         throw new Error(
           "This wallet cannot sign and send transactions through its own RPC"

@@ -12,9 +12,12 @@ export type WalletConnectorMetadata = {
   icon?: string;
 };
 
+export type WalletTransactionVersion = "legacy" | 0 | 1;
+
 export type WalletSession = {
   account: WalletAccount;
   connector: WalletConnectorMetadata;
+  supportedTransactionVersions: readonly WalletTransactionVersion[];
   disconnect: () => Promise<void>;
   signTransaction?: (
     transaction: Uint8Array,

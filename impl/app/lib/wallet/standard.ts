@@ -17,12 +17,26 @@ import type {
   WalletConnector,
   WalletConnectorMetadata,
   WalletSession,
+  WalletTransactionVersion,
 } from "./types";
+
+function getSupportedTransactionVersions(
+  wallet: StandardWallet
+): readonly WalletTransactionVersion[] {
+  if (!(SolanaSignAndSendTransaction in wallet.features)) return [];
+  const feature = wallet.features[SolanaSignAndSendTransaction] as Partial<
+    SolanaSignAndSendTransactionFeature[typeof SolanaSignAndSendTransaction]
+  >;
+  return Array.isArray(feature.supportedTransactionVersions)
+    ? feature.supportedTransactionVersions
+    : [];
+}
 
 function isSolanaWallet(wallet: StandardWallet): boolean {
   return (
     StandardConnect in wallet.features &&
-    wallet.chains.some((chain) => chain.startsWith("solana:"))
+    wallet.chains.some((chain) => chain.startsWith("solana:")) &&
+    getSupportedTransactionVersions(wallet).includes(1)
   );
 }
 
@@ -54,10 +68,13 @@ function createConnector(wallet: StandardWallet): WalletConnector {
 
       const hasSendTx = SolanaSignAndSendTransaction in wallet.features;
       const hasSignTx = SolanaSignTransaction in wallet.features;
+      const supportedTransactionVersions =
+        getSupportedTransactionVersions(wallet);
 
       const session: WalletSession = {
         account: walletAccount,
         connector: metadata,
+        supportedTransactionVersions,
         disconnect: async () => {
           if (StandardDisconnect in wallet.features) {
             const feature = wallet.features[
