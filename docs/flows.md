@@ -195,3 +195,8 @@ Close is arbiter-constructed (**DEP4**, **D4**). The shared HP mint MUST NOT be 
 ### O4. Pre-launch VRF wire flow
 
 Before launch, winner selection MUST use VRF or equivalent publicly verifiable, unpredictable randomness (**A8**). Provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding are undecided. An asynchronous design may commit a randomness request when striking closes rather than retain the prototype selected-index commitment. The flow also depends on whether the program must enforce index-to-attacker mapping on-chain or a publicly reproducible successful-Attack-history scan is sufficient ([arbiter.md](arbiter.md) **O2**). No wire flow is invented until those choices are made.
+
+### Player Registration
+Registration via Solana Attestation Service (SAS) is required before striking any piñata. This is the sybil resistance mechanism.
+Register instruction is implementation performs the piñata program related SAS onboarding.
+Alternatively, registration can happen off-chain or out-of-band. In such case, Strike instruction would embed attestation verification.
