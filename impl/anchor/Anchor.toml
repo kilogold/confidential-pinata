@@ -15,7 +15,7 @@ cluster = "localnet"
 wallet = "../arbiter_keypair.json"
 
 [scripts]
-test = "npx tsx --env-file=../.env.local --tsconfig ../tsconfig.json --test tests/initialize.test.ts"
+test = "NODE_ENV=development npx tsx --env-file=../.env.local --tsconfig ../tsconfig.json --test tests/initialize.test.ts"
 
 [surfpool]
 online = true

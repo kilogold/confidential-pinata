@@ -14,6 +14,7 @@ import type { TransactionSigner } from "@solana/kit";
 import type { WalletConnector, WalletSession } from "./types";
 import { discoverWallets, watchWallets } from "./standard";
 import { createWalletSigner } from "./signer";
+import { orchestrateEmbeddedWallets } from "./embedded";
 import { useCluster } from "../../components/cluster-context";
 
 const WALLET_STATUS = {
@@ -44,8 +45,15 @@ export function WalletProvider({ children }: PropsWithChildren) {
   const { cluster } = useCluster();
   const chain = `solana:${cluster}`;
 
-  const [connectors, setConnectors] = useState<WalletConnector[]>(() =>
-    typeof window === "undefined" ? [] : discoverWallets()
+  const [standardConnectors, setStandardConnectors] = useState<
+    WalletConnector[]
+  >(() => (typeof window === "undefined" ? [] : discoverWallets()));
+  const [embeddedConnectors, setEmbeddedConnectors] = useState<
+    WalletConnector[]
+  >([]);
+  const connectors = useMemo(
+    () => [...embeddedConnectors, ...standardConnectors],
+    [embeddedConnectors, standardConnectors]
   );
   const [session, setSession] = useState<WalletSession | undefined>();
   const [status, setStatus] = useState<WalletStatus>(
@@ -58,9 +66,14 @@ export function WalletProvider({ children }: PropsWithChildren) {
   const autoConnectAttempted = useRef(false);
 
   const handleWalletsChanged = useCallback((updated: WalletConnector[]) => {
-    connectorsRef.current = updated;
-    setConnectors(updated);
+    setStandardConnectors(updated);
   }, []);
+
+  useEffect(() => {
+    connectorsRef.current = connectors;
+  }, [connectors]);
+
+  useEffect(() => orchestrateEmbeddedWallets(setEmbeddedConnectors), []);
 
   const runAutoConnect = useCallback(async (connector: WalletConnector) => {
     setStatus(WALLET_STATUS.CONNECTING);
@@ -81,7 +94,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
     if (lastId && !autoConnectAttempted.current) {
       autoConnectAttempted.current = true;
       const connector = connectorsRef.current.find((c) => c.id === lastId);
-      if (connector) {
+      if (connector && connector.autoConnect !== false) {
         void runAutoConnect(connector);
       }
     }
@@ -89,23 +102,31 @@ export function WalletProvider({ children }: PropsWithChildren) {
     return unsubscribe;
   }, [handleWalletsChanged, runAutoConnect]);
 
-  const connect = useCallback(async (connectorId: string) => {
-    const connector = connectorsRef.current.find((c) => c.id === connectorId);
-    if (!connector) throw new Error(`Unknown connector: ${connectorId}`);
+  const connect = useCallback(
+    async (connectorId: string) => {
+      const connector = connectors.find((c) => c.id === connectorId);
+      if (!connector) throw new Error(`Unknown connector: ${connectorId}`);
 
-    setStatus(WALLET_STATUS.CONNECTING);
-    setError(undefined);
+      autoConnectAttempted.current = true;
+      setStatus(WALLET_STATUS.CONNECTING);
+      setError(undefined);
 
-    try {
-      const s = await connector.connect();
-      setSession(s);
-      setStatus(WALLET_STATUS.CONNECTED);
-      localStorage.setItem(STORAGE_KEY, connectorId);
-    } catch (err) {
-      setError(err);
-      setStatus(WALLET_STATUS.ERROR);
-    }
-  }, []);
+      try {
+        const s = await connector.connect();
+        setSession(s);
+        setStatus(WALLET_STATUS.CONNECTED);
+        if (connector.autoConnect === false) {
+          localStorage.removeItem(STORAGE_KEY);
+        } else {
+          localStorage.setItem(STORAGE_KEY, connectorId);
+        }
+      } catch (err) {
+        setError(err);
+        setStatus(WALLET_STATUS.ERROR);
+      }
+    },
+    [connectors]
+  );
 
   const disconnect = useCallback(async () => {
     if (session) {

@@ -1,6 +1,7 @@
-import { HP_OFFSET_MAX } from "@/app/lib/constants";
 import { InitializeApiError } from "./errors";
 import { lamportsToSolNumber } from "./validate";
+
+const HP_OFFSET_MAX = 5;
 
 function randomOffsetInclusive(max: number): number {
   const buf = new Uint32Array(1);

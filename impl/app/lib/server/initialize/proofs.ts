@@ -30,7 +30,7 @@ import {
   fetchMaybeToken,
   type Extension,
 } from "@solana-program/token-2022";
-import { SYSTEM_PROGRAM_ADDRESS } from "@/app/lib/constants";
+import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
 import type { SolanaRpc } from "../rpc";
 import { InitializeApiError } from "./errors";
 

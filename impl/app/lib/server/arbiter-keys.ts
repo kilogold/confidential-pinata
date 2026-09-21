@@ -7,10 +7,14 @@ import {
   type KeyPairSigner,
 } from "@solana/kit";
 import { AeKey, ElGamalKeypair, ElGamalSecretKey } from "@solana/zk-sdk/node";
-import {
-  CONFIDENTIAL_HKDF_SALT,
-  HP_KEY_PUBLIC_SEED,
-} from "@/app/lib/constants";
+
+/**
+ * A2 public seed. Empty bytes match `derive_confidential_keys(signer, b"")`.
+ * Must not include the vault address, session, or `(owner, mint)`.
+ */
+const HP_KEY_PUBLIC_SEED = new Uint8Array();
+/** HKDF salt / canonical derivation message prefix. */
+const CONFIDENTIAL_HKDF_SALT = new TextEncoder().encode("solana-conf-bal/v1");
 
 export type ArbiterKeys = {
   signer: KeyPairSigner;

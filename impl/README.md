@@ -19,7 +19,7 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 ## What's Included
 
 - **Landing** — Game Master (Init, Close) and Player (Register, Strike) actions
-- **Wallet connection** via wallet-standard with auto-discovery and dropdown UI
+- **Wallet connection** via wallet-standard with auto-discovery and dropdown UI, plus development-only embedded GM and Player signers
 - **Atomic Initialize submission** — the backend returns one partially signed transaction-v1 message containing inline proof instructions and Initialize; the GM wallet signs, sends, and confirms it
 - **Cluster switching** — devnet, testnet, mainnet, and localnet from the header
 - **Toast notifications** with explorer links for every transaction
@@ -50,9 +50,10 @@ Open [http://localhost:3000](http://localhost:3000), connect your wallet, and us
 │   │   └── wallet-button.tsx    # Wallet connect/disconnect dropdown
 │   ├── generated/pinata/       # Codama-generated program client
 │   ├── lib/
-│   │   ├── wallet/             # Wallet-standard connection layer
+│   │   ├── wallet/             # Wallet session layer
 │   │   │   ├── types.ts        # Wallet types
 │   │   │   ├── standard.ts     # Wallet discovery + session creation
+│   │   │   ├── embedded/       # Development-only browser-held signers
 │   │   │   ├── signer.ts       # WalletSession → TransactionSigner
 │   │   │   └── context.tsx     # WalletProvider + useWallet() hook
 │   │   ├── hooks/
@@ -80,30 +81,24 @@ The Initialize API returns one prepared transaction-v1 payload:
 }
 ```
 
-The transaction is already partially signed by the arbiter. It contains inline ZK proof instructions followed by Initialize and creates no proof-context or proof-data record accounts. The connected GM wallet remains the fee payer and submits the original serialized bytes through Wallet Standard. The backend requires transaction v1 support on the configured cluster, estimates compute and loaded-account-data limits, verifies the 4096-byte wire limit, and simulates the exact partially signed bytes before returning them. The frontend does not repeat simulation; the wallet may perform its own preview or simulation.
+The transaction is already partially signed by the arbiter. It contains inline ZK proof instructions followed by Initialize and creates no proof-context or proof-data record accounts. The connected GM wallet remains the fee payer. Production sends the original serialized bytes through Wallet Standard. The backend requires transaction v1 support on the configured cluster, estimates compute and loaded-account-data limits, verifies the 4096-byte wire limit, and simulates the exact partially signed bytes before returning them. The frontend does not repeat simulation for external wallets; the wallet may perform its own preview or simulation.
 
 Reinitialize is present in the generated client as a dedicated instruction but currently fails closed without changing state. Its full `GameOver → Live` behavior remains open in [flows.md](../docs/flows.md) **O2**.
 
-To test against a local validator instead of devnet:
+### Surfpool browser workflow
 
-1. **Start a local validator**
+This is a development test harness, not an alternative production F0 flow ([flows.md](../docs/flows.md) **F0**). In a development build, choose **Local GM** or **Local Player** from the wallet menu. They are browser-held keypairs, not browser extensions. They appear on every cluster in development and submit through the RPC configured for the currently selected cluster. External wallet discovery is unchanged, and changing clusters does not disconnect or replace the selected wallet. Despite their names, these keys are not limited to localnet.
 
-   ```bash
-   solana-test-validator
-   ```
+For Surfpool, set the arbiter backend's `SOLANA_RPC_URL=http://localhost:8899` in `impl/.env.local` and select `localnet` in the app so both sides use the same Surfpool instance. For another cluster, point `SOLANA_RPC_URL` at that same cluster. Keep `HP_MINT` and the arbiter authority configured for the selected cluster. Start the existing Surfpool watcher after building the program when needed:
 
-2. **Deploy the program locally**
+```bash
+bun run surfpool:watch
+bun run dev
+```
 
-   ```bash
-   solana config set --url localhost
-   cd anchor
-   anchor build --ignore-keys
-   anchor deploy
-   cd ..
-   npm run codama:js   # Regenerate client with local program ID
-   ```
+When the development app opens, it loads or creates the Local GM identity and uses Surfpool cheatcodes at `http://localhost:8899` to set its starting SOL and USDC (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) balance. This requires a running Surfpool fork of Devnet. Reload the page after starting Surfpool if it was unavailable; funding errors appear in the browser console. The amounts are set exactly on each page startup, so reloading resets balances to those amounts. Local Player funding and reward-token setup remain manual.
 
-3. **Switch to localnet** in the app using the cluster selector in the header.
+The two identities have separate private-key seeds stored as plain text in browser `localStorage`, so they survive reloads but are readable by scripts on this origin. Select the identity again after a reload. Clearing browser site data loses access to these identities, including any assets held by them. These are disposable development keys: do not use them for real funds, including on mainnet. The embedded signer adds only its fee-payer signature to the arbiter's v1 transaction, simulates the completed bytes against the selected cluster RPC, and then sends those same bytes. It never rebuilds the message or replaces the blockhash.
 
 `npm run setup` and `npm run anchor-build` pass `--ignore-keys` so Anchor keeps the program ID in `declare_id!` instead of generating a new keypair.
 

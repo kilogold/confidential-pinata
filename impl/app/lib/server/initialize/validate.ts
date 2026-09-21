@@ -1,9 +1,6 @@
 import { address, type Address } from "@solana/kit";
-import { SESSION_ID_MAX_BYTES } from "@/app/lib/constants";
+import { SESSION_ID_MAX_BYTES, LAMPORTS_PER_SOL } from "@/app/lib/constants";
 import { InitializeApiError } from "./errors";
-
-const DECIMAL = /^\d+(\.\d+)?$/;
-const LAMPORTS_PER_SOL = 1_000_000_000n;
 
 export type InitializeRequestBody = {
   gm: string;
@@ -66,6 +63,7 @@ export function parseDecimalToUnits(
   field: string
 ): bigint {
   const trimmed = value.trim();
+  const DECIMAL = /^\d+(\.\d+)?$/;
   if (!DECIMAL.test(trimmed)) {
     throw new InitializeApiError(code, `${field} must be a positive decimal`, {
       field,

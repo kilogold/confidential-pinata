@@ -3,10 +3,12 @@ import {
   fetchMint as fetchSplMint,
   fetchMaybeToken as fetchMaybeSplToken,
   findAssociatedTokenPda,
+  TOKEN_PROGRAM_ADDRESS,
 } from "@solana-program/token";
 import {
   fetchMint as fetchToken2022Mint,
   fetchMaybeToken as fetchMaybeToken2022,
+  TOKEN_2022_PROGRAM_ADDRESS,
 } from "@solana-program/token-2022";
 import {
   fetchMaybeSession,
@@ -14,10 +16,6 @@ import {
   findSessionPda,
   SessionStatus,
 } from "@/app/generated/pinata";
-import {
-  TOKEN_2022_PROGRAM_ADDRESS,
-  TOKEN_PROGRAM_ADDRESS,
-} from "@/app/lib/constants";
 import { deriveArbiterKeys } from "../arbiter-keys";
 import type { SolanaRpc } from "../rpc";
 import {

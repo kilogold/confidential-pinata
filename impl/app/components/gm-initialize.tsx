@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { DEVNET_USDC_MINT } from "../lib/constants";
 import { useWallet } from "../lib/wallet/context";
 import {
   parsePreparedTransaction,
@@ -20,9 +21,7 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
   const { wallet } = useWallet();
   const { signAndSend, isSending, progress } =
     useSignAndSendPartialTransaction();
-  const [rewardMint, setRewardMint] = useState(
-    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-  );
+  const [rewardMint, setRewardMint] = useState<string>(DEVNET_USDC_MINT);
   const [rewardAmount, setRewardAmount] = useState("5");
   const [strikeFeeSol, setStrikeFeeSol] = useState("0.01");
   const [sessionId, setSessionId] = useState("test");
@@ -117,7 +116,7 @@ export function GmInitialize({ enabled }: { enabled: boolean }) {
         className="rounded-lg border border-neutral-400 bg-card px-5 py-2.5 text-sm font-medium shadow-xs transition enabled:hover:border-neutral-600 enabled:hover:bg-cream disabled:pointer-events-none dark:border-neutral-600 dark:enabled:hover:border-neutral-500"
       >
         {progress?.phase === "awaiting-wallet"
-          ? "Approve in wallet…"
+          ? "Submitting…"
           : progress?.phase === "confirming"
             ? "Confirming…"
             : busy

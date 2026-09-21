@@ -30,5 +30,6 @@ export type WalletSession = {
 };
 
 export type WalletConnector = WalletConnectorMetadata & {
+  autoConnect?: boolean;
   connect: (options?: { silent?: boolean }) => Promise<WalletSession>;
 };

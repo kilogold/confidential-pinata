@@ -7,18 +7,18 @@ import {
   createNoopSigner,
   generateKeyPairSigner,
   getAddressEncoder,
-  getBase64EncodedWireTransaction,
+  getBase58Decoder,
   getBase64Encoder,
-  getSignatureFromTransaction,
   getTransactionDecoder,
   isSome,
-  signTransaction,
+  signature,
   type Address,
   type Base64EncodedWireTransaction,
   type KeyPairSigner,
   type Signature,
 } from "@solana/kit";
-import { fetchToken } from "@solana-program/token";
+import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
+import { fetchToken, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { fetchMaybeToken, fetchMint } from "@solana-program/token-2022";
 import { AeCiphertext } from "@solana/zk-sdk/node";
 import {
@@ -28,7 +28,11 @@ import {
   findSessionPda,
   SessionStatus,
 } from "@/app/generated/pinata";
-import { TOKEN_PROGRAM_ADDRESS } from "@/app/lib/constants";
+import {
+  ARBITER_ACCOUNT,
+  DEVNET_HP_MINT,
+  DEVNET_USDC_MINT,
+} from "@/app/lib/constants";
 import { deriveArbiterKeys } from "@/app/lib/server/arbiter-keys";
 import { loadArbiterEnv } from "@/app/lib/server/env";
 import { buildPartialInitializeTransaction } from "@/app/lib/server/initialize/build";
@@ -37,6 +41,7 @@ import {
   hpVaultNeedsCreate,
 } from "@/app/lib/server/initialize/proofs";
 import type { SolanaRpc } from "@/app/lib/server/rpc";
+import { signAndSendEmbeddedTransaction } from "@/app/lib/wallet/embedded/send";
 
 function loadEnvFile(path: string): void {
   if (process.env.ARBITER_AUTHORITY_SECRET_KEY_BASE64) return;
@@ -66,11 +71,6 @@ function loadEnvFile(path: string): void {
 }
 
 loadEnvFile(resolve(import.meta.dirname, "../../.env.local"));
-
-const HP_MINT = "F8kzHfvDipseePMuZx81rVB7ESJRDX4DuBFTmjsh3BTW" as Address;
-const ARBITER = "arbXiNvkQ88uyPAUwxzdk5cqpbtuxSMWrQzbczqP66m" as Address;
-const DEVNET_USDC = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU" as Address;
-const SYSTEM_PROGRAM = "11111111111111111111111111111111" as Address;
 
 const HP_AMOUNT = 5n;
 const REWARD_AMOUNT = 1_000_000n;
@@ -113,14 +113,14 @@ async function surfnet(method: string, params: unknown[]): Promise<unknown> {
 async function fundSol(address: Address, lamports: bigint): Promise<void> {
   await surfnet("setAccount", [
     address,
-    { lamports: Number(lamports), owner: SYSTEM_PROGRAM },
+    { lamports: Number(lamports), owner: SYSTEM_PROGRAM_ADDRESS },
   ]);
 }
 
 async function fundUsdc(owner: Address, amount: bigint): Promise<void> {
   await surfnet("setTokenAccount", [
     owner,
-    DEVNET_USDC,
+    DEVNET_USDC_MINT,
     {
       amount: Number(amount),
       state: "initialized",
@@ -175,15 +175,15 @@ before(async () => {
   const env = loadArbiterEnv();
   assert.equal(
     env.hpMint,
-    HP_MINT,
-    `HP_MINT must be the Devnet shared mint ${HP_MINT}`
+    DEVNET_HP_MINT,
+    `HP_MINT must be the Devnet shared mint ${DEVNET_HP_MINT}`
   );
   hpMint = env.hpMint;
   arbiter = await deriveArbiterKeys(env.arbiterSecretKey);
   assert.equal(
     arbiter.signer.address,
-    ARBITER,
-    `arbiter key must be ${ARBITER}`
+    ARBITER_ACCOUNT,
+    `arbiter key must be ${ARBITER_ACCOUNT}`
   );
 
   rpc = createSolanaRpc(rpcUrl) as SolanaRpc;
@@ -229,7 +229,7 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
     sessionId,
     strikeFeeLamports: STRIKE_FEE_LAMPORTS,
     rewardAmount: REWARD_AMOUNT,
-    rewardMint: DEVNET_USDC,
+    rewardMint: DEVNET_USDC_MINT,
     rewardTokenProgram: TOKEN_PROGRAM_ADDRESS,
     hpMint,
     proofs,
@@ -251,10 +251,14 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
     null,
     "GM must complete the fee-payer signature"
   );
-  const signedTx = await signTransaction([gm.keyPair], partialTx);
-  const wire = getBase64EncodedWireTransaction(signedTx);
-  await rpc.sendTransaction(wire, { encoding: "base64" }).send();
-  await confirmSignature(getSignatureFromTransaction(signedTx));
+  const signatureBytes = await signAndSendEmbeddedTransaction(
+    new Uint8Array(txBytes),
+    "solana:localnet",
+    gm,
+    rpc
+  );
+  const sentSignature = signature(getBase58Decoder().decode(signatureBytes));
+  await confirmSignature(sentSignature);
 
   const arbiterBalanceAfter = await rpc
     .getBalance(arbiter.signer.address)
@@ -269,7 +273,7 @@ test("GM initializes a piñata session", { timeout: 180_000 }, async () => {
   assert.equal(session.data.status, SessionStatus.Live);
   assert.equal(session.data.gm, gm.address);
   assert.equal(session.data.arbiter, arbiter.signer.address);
-  assert.equal(session.data.rewardMint, DEVNET_USDC);
+  assert.equal(session.data.rewardMint, DEVNET_USDC_MINT);
   assert.equal(session.data.rewardAmount, REWARD_AMOUNT);
   assert.equal(session.data.strikeFeeLamports, STRIKE_FEE_LAMPORTS);
 
