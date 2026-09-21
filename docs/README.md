@@ -1,6 +1,6 @@
 # Docs
 
-Technical design for **Confidential Piñata**, a mystery-supply raffle. Each paid successful Attack strikes the piñata, burns 1 confidential HP, and assigns the attacking wallet the next index: 0 for the first successful strike, 1 for the second, and so on. When HP reaches zero, those indexes form the Drawing range: the more a player strikes, the more indexes they hold and the higher their odds of receiving the public reward. The Terminal Attack closes striking and stores a hidden selected-index commitment; a separate `Settle` reveals it, pays the assigned player, and sends the SOL pile to the GM.
+Technical design for **Confidential Piñata**, a mystery-supply raffle. Each paid successful Attack strikes the piñata, burns 1 confidential HP, and assigns the attacking wallet the next index: 0 for the first successful strike, 1 for the second, and so on. When HP reaches zero, those indexes form the Drawing range: the more a player strikes, the more indexes they hold and the higher their odds of receiving the public reward. The Terminal Attack closes striking and records final `N`; the arbiter privately derives the prototype winner for a separate signed `Settle`, which pays that player and sends the SOL pile to the GM.
 
 Account layouts, proof bytes, and client code are out of scope until a later pass.
 
@@ -37,8 +37,8 @@ flowchart LR
 | [game.md](game.md)                                   | Mystery-supply strike and Drawing loop, player incentives, prototype wallet identity, pre-launch SAS identity, reputation | Pre-launch SAS credential / person-id field; points to winner-mapping question                   |
 | [confidential-balances.md](confidential-balances.md) | HP as the hidden Drawing range length; visibility; Token-2022 HP mechanics                                                | Optional mint auditor                                                                            |
 | [deployment.md](deployment.md)                       | Participants, state/escrow topology, DEP1–DEP6, owner versus authority                                                    | Later HP bind to program (**O1**; not arbiter isolation **O1**); VRF component awaits provider   |
-| [program.md](program.md)                             | Six instructions—Initialize, Reinitialize, Register, Attack, Settle, Close—and D1–D4 enforcement                          | Reinitialize mechanics; instruction, commitment, and account layouts; VRF-driven program changes |
-| [arbiter.md](arbiter.md)                             | Price, HP formula, public offset range, keys, proofs, prototype draw commitment, pre-launch winner VRF policy; A1–A8      | Isolation enforcement (**O1**); VRF lifecycle and index-to-attacker enforcement (**O2**)         |
+| [program.md](program.md)                             | Six instructions—Initialize, Reinitialize, Register, Attack, Settle, Close—and D1–D4 enforcement                          | Reinitialize mechanics; instruction and account layouts; VRF-driven program changes             |
+| [arbiter.md](arbiter.md)                             | Price, HP formula, public offset range, keys, proofs, stateless prototype draw, pre-launch winner VRF policy; A1–A8       | Isolation enforcement (**O1**); VRF lifecycle and index-to-attacker enforcement (**O2**)         |
 | [flows.md](flows.md)                                 | F0–F3: atomic transaction-v1 wallet/send, Initialize, Attack, Settle                                                      | Reinitialize wire (**O2**); Close wire (**O3**); pre-launch VRF wire flow (**O4**)               |
 
 ## Cross-document Still open summary

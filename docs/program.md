@@ -14,9 +14,9 @@ stateDiagram-v2
 
   Live --> Live: Register
   Live --> Live: Attack — HP remains
-  Live --> Drawing: Terminal Attack\nzero proof succeeds\nstore selected-index commitment
+  Live --> Drawing: Terminal Attack\nzero proof succeeds\nrecord final N
 
-  Drawing --> GameOver: Settle\nreveal commitment\npay winner and GM
+  Drawing --> GameOver: Settle\narbiter supplies index\npay winner and GM
 
   GameOver --> Live: Reinitialize new session
   GameOver --> Closed: Close
@@ -33,8 +33,8 @@ While `Drawing`, only **Settle** is valid. After `GameOver`, only **Close** or t
 | **Initialize**   | `Uninitialized` only.                          | GM pays PDA rent, locks a **public** reward, sets the strike fee. Arbiter prices and sets HP. Initialize CPIs `ConfidentialMint` into this vault on the **shared** mint, then immediately CPIs `ApplyPendingBalance`; both use the arbiter's transaction signer privilege and no PDA signer. Creates the first session with successful-Attack count zero. |
 | **Reinitialize** | Reserved for `GameOver` only.                  | Starts a later session without overloading Initialize. Its reset, reward-funding, confidential-mint, and proof rules remain unspecified; the current implementation MUST fail closed as an explicit stub.                                                                                                                                                 |
 | **Register**     | `Live` only.                                   | Admit a player and set up their reward token account.                                                                                                                                                                                                                                                                                                     |
-| **Attack**       | `Live` only.                                   | Atomically move the fixed strike fee into this pile, burn 1 HP, assign the next zero-based successful-Attack index to the attacker, and increment the successful-Attack count. A terminal zero proof transitions to `Drawing` and stores a selected-index commitment. Attack never transfers the reward or pile.                                          |
-| **Settle**       | `Drawing` only.                                | Arbiter-signed commitment opening. Validate the selected index, then atomically transfer the public reward to the player assigned that index and the SOL pile to the GM; enter `GameOver`. The requester is fee payer (**F3**).                                                                                                                           |
+| **Attack**       | `Live` only.                                   | Atomically move the fixed strike fee into this pile, burn 1 HP, assign the next zero-based successful-Attack index to the attacker, and increment the successful-Attack count. A terminal zero proof records final `N` and transitions to `Drawing`. Attack never transfers the reward or pile. |
+| **Settle**       | `Drawing` only.                                | Arbiter-signed selected index and recipient. Validate the index range, then atomically transfer the public reward to the supplied player and the SOL pile to the GM; enter `GameOver`. The requester is fee payer (**F3**). |
 | **Close**        | `GameOver` only. GM signer and rent recipient. | Tear down this instance's PDAs (including this HP token account). MUST NOT close the shared HP mint. Arbiter attaches leftover-zero proof and signs as vault authority; GM completes (**F0**). **Not** settlement.                                                                                                                                        |
 
 ## Attack closure and settlement
@@ -49,7 +49,7 @@ flowchart LR
   proof -->|yes| sibling[Read verified sibling]
   sibling --> bind[Byte-bind to post-burn vault]
   bind -->|fail or mismatch| reject[Whole Attack fails]
-  bind -->|match| drawing[Drawing: store commitment]
+  bind -->|match| drawing[Drawing: record final N]
   drawing --> settle[Later Settle]
   settle --> winner[Player assigned selected index gets reward]
   settle --> gm[GM gets SOL pile]
@@ -58,7 +58,7 @@ flowchart LR
 | Branch            | Program MUST                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Proof **absent**  | Keep the instance `Live`. Do not pay pile or reward. Required even if post-burn HP is actually zero. A conforming arbiter MUST NOT submit that terminal burn (**A5**). The instruction is theoretically open because v1 does not require a leftover-nonzero proof; that path is malicious/exploited arbiter only (**A7**), which v1 accepts.                                                                                                                                                                                                   |
-| Proof **present** | Load the preceding top-level `VerifyZeroCiphertext` sibling through the instructions sysvar and validate its program and proof type. A failed proof instruction has already failed the **whole** transaction, including fee, burn, index assignment, and count change. Its decoded ElGamal pubkey MUST equal the vault's ElGamal pubkey and its ciphertext MUST equal the post-burn `available_balance`. Mismatch MUST fail. Match MUST store the supplied selected-index commitment and enter `Drawing`; it MUST NOT transfer reward or pile. |
+| Proof **present** | Load the preceding top-level `VerifyZeroCiphertext` sibling through the instructions sysvar and validate its program and proof type. A failed proof instruction has already failed the **whole** transaction, including fee, burn, index assignment, and count change. Its decoded ElGamal pubkey MUST equal the vault's ElGamal pubkey and its ciphertext MUST equal the post-burn `available_balance`. Mismatch MUST fail. Match MUST record final `N` and enter `Drawing`; it MUST NOT transfer reward or pile. |
 
 The proof is for the **post-burn** vault blob (homomorphic leftover), not a freshly encrypted zero. `Settle` relies on the on-chain `Drawing` state and MUST NOT verify the same zero proof again.
 
@@ -86,19 +86,18 @@ Every successful Attack MUST atomically debit one HP (`ConfidentialBurn`), credi
 
 The on-chain live-versus-terminal branch MUST be whether this Attack references a preceding top-level ZK ElGamal Proof Program `VerifyZeroCiphertext` instruction. The program MUST load that sibling through the instructions sysvar, validate its program and proof type, decode its public context, and byte-bind it to the post-burn HP vault. A failed proof instruction or mismatched context MUST fail the whole transaction. A proof absent from the terminal burn leaves the instance stalled `Live` with encrypt(0), the accepted malicious/exploited-arbiter caveat (**A7**).
 
-When the bound zero proof succeeds, the Terminal Attack MUST retain its assigned index, record final successful-Attack count `N`, require and store a hiding and binding selected-index commitment supplied by the arbiter, and transition `Live → Drawing`. The final Drawing range is `[0, N - 1]`, including the Terminal Attack's index. The commitment MUST bind the session, `N`, selected index, and a secret nonce. Attack MUST NOT transfer the reward or SOL pile.
+When the bound zero proof succeeds, the Terminal Attack MUST retain its assigned index, record final successful-Attack count `N`, and transition `Live → Drawing`. The final Drawing range is `[0, N - 1]`, including the Terminal Attack's index. Attack MUST NOT supply a selected index or transfer the reward or SOL pile.
 
 Settle MUST:
 
 1. Target the correct instance and require state `Drawing`.
 2. Require the configured arbiter authority's signature.
-3. Reveal the committed selected index and nonce, recompute the commitment over the session, final `N`, index, and nonce, and reject an invalid opening.
-4. Reject an index outside `[0, N - 1]` (equivalently, the index MUST be below the final successful-Attack count).
-5. Use the reward recipient supplied from the chronological successful-Attack history for the player assigned that index. The prototype trusts the arbiter's off-chain mapping; the program MUST NOT claim to scan historical transactions.
-6. Atomically pay the entire public reward to the player assigned the selected index and the entire SOL pile to the GM, then enter `GameOver`.
-7. Reject if settlement has already occurred. The `Drawing → GameOver` state guard MUST make a second execution impossible.
+3. Read the selected index supplied by the arbiter and reject it if outside `[0, N - 1]` (equivalently, the index MUST be below the final successful-Attack count). The program does not verify the arbiter's private draw.
+4. Use the reward recipient supplied from the chronological successful-Attack history for the player assigned that index. The prototype trusts the arbiter's off-chain mapping; the program MUST NOT claim to scan historical transactions.
+5. Atomically pay the entire public reward to the player assigned the selected index and the entire SOL pile to the GM, then enter `GameOver`.
+6. Reject if settlement has already occurred. The `Drawing → GameOver` state guard MUST make a second execution impossible.
 
-Exact commitment bytes, hash, field sizes, and account layout remain instruction-layout details. The reward transfer is public; no confidential reward proof is involved.
+Exact instruction bytes, field sizes, and account layout remain instruction-layout details. The reward transfer is public; no confidential reward proof is involved. The program cannot prove that two unsigned or refused `Settle` requests named the same winner; the arbiter MUST derive the same winner on each request ([arbiter.md](arbiter.md), prototype raffle selection).
 
 v1 MUST NOT require a leftover-HP-nonzero proof on the live path. The proof program documents `VerifyZeroCiphertext` and range proofs on `[0, 2ⁿ)` (zero included), not a leftover-exclusive-of-zero instruction. Composing a shifted range to exclude 0 is out of scope (**A7**).
 
@@ -108,6 +107,6 @@ A new session on the same piñata MUST use the dedicated Reinitialize instructio
 
 ## Still open
 
-- Exact instruction data schemas, commitment hash/encoding, field sizes, account metas, and account byte layouts.
-- Reinitialize's proof set, zero-vault binding, reward reload, session reset, account list, and wire flow. Until decided, the implementation is a rejecting stub and no `GameOver → Live` transition is operational.
+- Exact instruction data schemas, field sizes, account metas, and account byte layouts.
+- Reinitialize's proof set, zero-vault binding, reward reload, session reset, distinct on-chain session identifier for the prototype draw, account list, and wire flow. Until decided, the implementation is a rejecting stub and no `GameOver → Live` transition is operational.
 - Pre-launch VRF request/reveal fields and transaction lifecycle, including any program changes, are [arbiter.md](arbiter.md) **O2**.

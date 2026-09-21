@@ -13,7 +13,7 @@ flowchart LR
   subgraph backend [Backend — secrets stay here]
     keys[HP ElGamal/AES<br/>Mint authority<br/>Vault authority]
     hp[HP draw + proofs]
-    raffle[Persisted selected index + nonce]
+    raffle[Stateless prototype winner derivation]
   end
   subgraph frontend [Frontend]
     ui[Wallet adapter]
@@ -32,10 +32,10 @@ The v1 arbiter MUST be the arbiter webapp (frontend, backend, and Piñata progra
 
 | Flow   | Arbiter MUST                                                                                                                                                                                                                       |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attack | Participate in every Attack that mutates confidential HP: attach proofs and sign as vault authority. For the Terminal Attack, also choose and persist the selected index and nonce and supply the commitment. Not player-only.     |
-| Settle | Reuse the persisted prototype result, scan successful Attack history to find the player assigned the selected index, construct Settle, and sign as configured arbiter authority. Never reroll because a requester refuses to sign. |
+| Attack | Participate in every Attack that mutates confidential HP: attach proofs and sign as vault authority. For the Terminal Attack, attach the zero proof so the program records final `N` and enters `Drawing`. Not player-only. |
+| Settle | Derive the same prototype index for every request from the long-lived arbiter secret and on-chain session data, scan successful Attack history to find its player, construct Settle, and sign as configured arbiter authority. |
 | Close  | Construct Close, including leftover-zero proof and vault-authority signature. Not GM-only-assembled.                                                                                                                               |
-| Keys   | HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and prototype draw secrets live in the **backend** (**DEP2**, **DEP5**, **DEP6**).                                                                   |
+| Keys   | HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and the long-lived prototype draw secret live in the **backend** (**DEP2**, **DEP5**, **DEP6**). |
 
 ### A2. Keys and HP plaintext
 
@@ -48,11 +48,11 @@ These MUST live only in the backend:
 | HP mint authority            | Token-2022 mint signer. **Reused.** Stored in env.                                                                                                                                                                                                                                                                                                                                                                 |
 | HP vault authority           | Token-2022 signer for each instance's HP token account. **Reused.** MAY be the same keypair as mint authority. Simplest v1: that env keypair is both.                                                                                                                                                                                                                                                              |
 | HP draw and proof generation | Plaintext HP and remaining HP.                                                                                                                                                                                                                                                                                                                                                                                     |
-| Prototype raffle opening     | Once selected: final `N`, selected index, and fresh secret nonce. Persisted through settlement.                                                                                                                                                                                                                                                                                                                    |
+| Prototype raffle derivation | A domain-separated HMAC key derived from the arbiter Solana authority secret. No per-session winner or `N` record is retained between requests. |
 
 The arbiter MUST reuse the HP key material for every instance, first-session Initialize, and eventual Reinitialize. HP vaults remain per-instance accounts; the keys are not. The instance HP vault MUST be a PDA **address**; that is not custody of these keys.
 
-v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal and AES MUST be derived from that keypair on the fly. The derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. They MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
+v1 MUST store only the arbiter Solana authority keypair in an env file that exists only on the arbiter host and is readable by the arbiter backend. HP ElGamal, AES, and the prototype raffle HMAC key MUST be derived from that keypair on the fly with separate derivation domains. The HP derivation public seed MUST be a fixed implementation constant, not an instance vault address, so vault and supply share one ElGamal. These secrets MUST NOT be in the frontend, in git, in a PDA, or on the GM workstation. The authority key MUST remain available until all sessions it serves have settled; rotating or losing it before then can change or prevent recovery of their derived winners. That is custody and access for the server. It is not isolation enforcement (**O1**): a game master with host access can still read the file.
 
 ### A3. Initialize: price, offset, mint
 
@@ -91,7 +91,7 @@ Participants MAY estimate an HP and final strike-count range from public Jupiter
 flowchart TB
   burn[ConfidentialBurn proofs for HP − 1]
   burn --> z{Post-burn HP will be 0?}
-  z -->|yes| zp[VerifyZeroCiphertext + selected-index commitment]
+  z -->|yes| zp[VerifyZeroCiphertext]
   z -->|no| nz[Burn proof only]
   zp --> seq[CPI burn from Attack]
   nz --> seq
@@ -103,33 +103,33 @@ flowchart TB
 | Burn            | Attach Token-2022 proofs for homomorphic −1 on the HP vault. Partial-sign as **vault** authority (**DEP6**). Attack MUST CPI that burn (**D3**). MUST NOT PDA-sign it.                                                                                                                 |
 | Supply          | Immediately after: `ApplyPendingBurn` then `UpdateDecryptableSupply`. Partial-sign both as **mint** authority (**DEP5**). These fold / refresh **shared-mint** supply. They are **not** the HP decrement.                                                                              |
 | Normal Attack   | If post-burn HP is nonzero, attach only the burn proofs. The attacking wallet receives the next chronological successful-Attack index and the instance remains `Live`.                                                                                                                 |
-| Terminal Attack | If post-burn HP is zero, attach `VerifyZeroCiphertext` for the post-burn vault `available_balance`, choose and persist the prototype selected index and nonce as described below, and supply their commitment. MUST NOT assemble a terminal burn without the zero proof or commitment. |
+| Terminal Attack | If post-burn HP is zero, attach `VerifyZeroCiphertext` for the post-burn vault `available_balance`. The program records final `N` and enters `Drawing`. MUST NOT assemble a terminal burn without the zero proof. |
 | Payout          | MUST NOT transfer reward or pile during Attack. Payout occurs only through `Settle`.                                                                                                                                                                                                   |
-| Isolation       | MUST NOT expose per-strike refusal to the GM. MUST NOT reveal exact HP, remaining HP, the realized offset, exact price quote, selected index, or nonce during play. The offset range `0..=5` is public.                                                                                |
+| Isolation       | MUST NOT expose per-strike refusal to the GM. MUST NOT reveal exact HP, remaining HP, the realized offset, exact price quote, or selected index during play. The offset range `0..=5` is public. |
 
 A normal wallet signs the arbiter's already-partial-signed bytes and cannot omit the terminal proof by accident. Only a **malicious or exploited arbiter** can produce a last-HP burn with a valid signature set and no zero proof. That is a deliberately accepted trust assumption, in the same class as exclusive key custody (**A2**).
 
 ### Prototype raffle selection
 
-The prototype does **not** use VRF and MUST NOT be described as trustless or verifiable randomness.
+The prototype does **not** use VRF and MUST NOT be described as trustless or verifiable randomness. It trusts the arbiter's private, repeatable draw. The arbiter can calculate the selected index early, so this prototype does not meet the pre-launch unpredictability requirement (**A8**).
 
-After determining that an Attack will reduce HP to zero, the arbiter MUST:
+For each `Settle` request, the arbiter MUST:
 
-1. Calculate final successful-Attack count `N`, which equals the Terminal Attack's index plus one and, absent out-of-band HP mutation, realized initial HP.
-2. Uniformly choose one index from the final Drawing range `[0, N - 1]` exactly once.
-3. Generate a fresh secret nonce, persist `N`, the selected index, and nonce before returning the Terminal Attack, and never reroll them.
-4. Construct a hiding and binding commitment over the session, `N`, selected index, and nonce. The nonce is required because the index domain is small.
-5. Put only that commitment in the Terminal Attack. The selected index and nonce MUST NOT be visible.
+1. Read final successful-Attack count `N` from the instance state PDA in `Drawing`. `N` equals the Terminal Attack's index plus one and, absent out-of-band HP mutation, realized initial HP.
+2. Derive the prototype raffle key from the existing arbiter Solana authority secret with HKDF-SHA-256 and a fixed `pinata/prototype-raffle/v1` domain label. Use HMAC-SHA-256 with separate draw/counter labels over the program ID, instance PDA, and `N` to generate candidate values. Reject values outside the largest multiple of `N` below `2^256`, then reduce the accepted value modulo `N`; this avoids range bias and always selects an index in `[0, N - 1]`.
+3. Scan the public chronological successful-Attack history for the wallet assigned that index, construct `Settle` with that wallet's reward account, and sign as configured arbiter authority. The program validates the arbiter signature and index range; it does not scan historical transactions or verify the private draw.
 
-For `Settle`, the arbiter MUST reuse the persisted selected index and nonce, scan the public chronological successful-Attack history to find the wallet assigned that index, construct the transaction with that player as reward recipient, reveal the index and nonce, and sign as configured arbiter authority. The program verifies the opening and range; it does not scan historical transactions. Prototype v1 trusts the arbiter both for randomness quality and the ledger-derived index-to-wallet mapping. The selected index and resulting payout become publicly auditable at settlement.
+The same key and on-chain inputs MUST yield the same selected index and reward recipient for every rebuilt `Settle`, even when a requester refuses to sign or a transaction expires. Transaction bytes may change with fee payer or blockhash. The `Drawing → GameOver` guard permits only one successful payout. No per-session raffle opening or `N` is stored locally.
 
-If a requester sees the result and refuses to sign, subsequent requesters MUST receive the same persisted opening and reward recipient. Refusal can delay settlement but cannot cause a reroll.
+The instance PDA distinguishes first sessions across piñatas while Reinitialize remains a rejecting stub. Before enabling session reuse on one instance, Reinitialize MUST establish a distinct on-chain session identifier and the prototype draw MUST include it, so equal `N` values in later sessions cannot reuse the same draw.
 
-Exact commitment bytes, hash choice, field sizes, and account layout are instruction-layout details (**D3**).
+Prototype v1 trusts the arbiter both for the private draw and the ledger-derived index-to-wallet mapping. A requester sees the selected index in an unsigned `Settle` transaction; it becomes public on-chain if that transaction succeeds. Without a commitment, the program cannot prove that two unsigned `Settle` requests named the same winner; this is an arbiter behavior requirement, not an on-chain guarantee.
+
+Exact instruction bytes, field sizes, and account layout remain instruction-layout details (**D3**).
 
 ### A6. Game master isolation
 
-The GM MUST NOT read the backend: no HP ElGamal or AES keys, HP mint authority, HP vault authority, HP draw, remaining HP, realized offset, selected index or nonce before settlement, or per-strike refusal. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and may learn or influence the prototype selection.
+The GM MUST NOT read the backend: no HP ElGamal or AES keys, HP mint authority, HP vault authority, prototype raffle derivation key, HP draw, remaining HP, realized offset, selected index during `Live`, or per-strike refusal. A `Settle` requester, including the GM, may see the selected index in the unsigned transaction after the session enters `Drawing`. Using the frontend to sign Initialize or Close does not count as reading the arbiter (**DEP3**). This is policy. Enforcement is **O1**. If isolation fails, the house knows exact HP and may learn or influence the prototype selection.
 
 ### A7. Liveness versus censorship
 
@@ -149,7 +149,7 @@ That is not a player vector: Attack is arbiter-assembled and already partial-sig
 
 Before product launch, raffle-winner selection MUST replace prototype selection with VRF or equivalent publicly verifiable, unpredictable randomness. The result MUST NOT be available early enough for the arbiter, GM, or Terminal Attacker to manipulate strike participation.
 
-The exact provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding remain open (**O2**). The prototype selected-index commitment MUST NOT be assumed to be the final architecture: an asynchronous VRF may instead require committing a randomness request when striking closes.
+The exact provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding remain open (**O2**). The prototype's private repeatable draw MUST NOT be assumed to be the final architecture: an asynchronous VRF may require committing a randomness request when striking closes.
 
 Winner-selection VRF is distinct from HP-offset randomness. Using VRF for the HP offset remains deferred and is not part of the mandatory winner-selection replacement.
 

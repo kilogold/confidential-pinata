@@ -51,7 +51,7 @@ flowchart TB
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Initial HP and remaining HP cannot be inferred exactly because the arbiter's quote and realized offset are private.                                                           | When striking closes, successful Attack count `N` equals realized initial HP and fixes the Drawing range if HP changed only via conforming Attacks. |
 | The v1 offset range `0..=5`, including its maximum, is public. Participants can estimate a possible final strike-count range and the GM can gauge maximum potential proceeds. | Valid indexes are `[0, N - 1]`; the Terminal Attack is assigned `N - 1` and remains eligible.                                                       |
-| Every successful Attack publicly identifies its chronological index and attacking wallet.                                                                                     | `Drawing` exposes only the selected-index commitment. `Settle` reveals the index and nonce; the winning wallet and public payout are auditable.     |
+| Every successful Attack publicly identifies its chronological index and attacking wallet.                                                                                     | `Drawing` records final `N` but no selected index. `Settle` supplies the index; the winning wallet and public payout are visible. |
 
 The exact HP, remaining HP, realized offset, and arbiter's exact price quote remain secret during play. The offset **range** is not secret.
 
@@ -86,10 +86,10 @@ flowchart LR
   burn[ConfidentialBurn] --> proof{VerifyZeroCiphertext in this Attack?}
   proof -->|no| live[Stay Live — even if leftover is 0]
   proof -->|yes| bind[Read verified sibling + byte-bind to post-burn vault]
-  bind -->|match| drawing[Enter Drawing + store commitment]
+  bind -->|match| drawing[Enter Drawing + record final N]
 ```
 
-- A Terminal Attack includes a top-level `VerifyZeroCiphertext` instruction from the ZK ElGamal Proof Program. The Piñata program reads that already-executed sibling through the instructions sysvar and binds its decoded public context to this vault's post-burn `available_balance` (**D3**). A successful match enters `Drawing`, stores the selected-index commitment, and leaves the reward and pile escrowed.
+- A Terminal Attack includes a top-level `VerifyZeroCiphertext` instruction from the ZK ElGamal Proof Program. The Piñata program reads that already-executed sibling through the instructions sysvar and binds its decoded public context to this vault's post-burn `available_balance` (**D3**). A successful match enters `Drawing`, records final `N`, and leaves the reward and pile escrowed.
 - A failed or mismatched proof aborts the entire Attack, including its burn, fee, index assignment, and count.
 - No such proof means remain `Live`, even if leftover is actually 0. That gap is **malicious/exploited arbiter only** (**A7**). A conforming arbiter MUST NOT assemble it (**A5**).
 - `Settle` relies on the on-chain `Drawing` state and does not verify the zero proof again.
@@ -102,7 +102,7 @@ flowchart LR
 - Initial HP is confidential-minted so public deposit and mint supply cannot leak the draw. Initialize MUST CPI `ConfidentialMint` and immediately CPI `ApplyPendingBalance`, atomically moving the new HP from pending to available. Attack MUST CPI `ConfidentialBurn`; `ApplyPendingBurn` and `UpdateDecryptableSupply` remain sibling Token-2022 instructions in prototype v1. All retain the authority, shared-supply, and key-reuse rules above (**A2**, **DEP5**, **DEP6**).
 - Zero remaining HP is attested only when an Attack includes `VerifyZeroCiphertext` bound to the post-burn HP vault (**D3**). Success transitions to `Drawing`; it does not pay the reward or pile. The omitted-proof and out-of-band-mutation caveats remain accepted prototype trust assumptions.
 - The public offset range is `0..=5`. Exact HP, remaining HP, realized offset, and arbiter quote stay secret during play. When striking closes, final successful-Attack count `N` reveals realized initial HP and fixes the Drawing range `[0, N - 1]` if HP changed only through conforming Attacks.
-- The selected-index commitment is public in `Drawing`; selected index, nonce, winning wallet, and payout become public at `Settle`.
+- The state in `Drawing` exposes final `N` but no selected index. The arbiter privately derives the same selected index for each `Settle` request; the requester sees it in the unsigned transaction, and the index, supplied recipient, and payout become public on-chain when settlement succeeds. The program trusts the arbiter's draw and index-to-wallet mapping ([arbiter.md](arbiter.md), prototype raffle selection; **D3**).
 
 ## Still open
 

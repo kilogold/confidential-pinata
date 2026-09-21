@@ -12,9 +12,9 @@ stateDiagram-v2
 
   Live --> Live: Register
   Live --> Live: Attack — HP remains
-  Live --> Drawing: Terminal Attack\nzero proof succeeds\nstore selected-index commitment
+  Live --> Drawing: Terminal Attack\nzero proof succeeds\nrecord final N
 
-  Drawing --> GameOver: Settle\nreveal commitment\npay winner and GM
+  Drawing --> GameOver: Settle\narbiter supplies index\npay winner and GM
 
   GameOver --> Live: Reinitialize new session
   GameOver --> Closed: Close
@@ -24,15 +24,15 @@ stateDiagram-v2
 
 Initial hidden HP determines how many successful strikes the piñata can absorb and therefore the hidden length of the Drawing's random range. Every paid, successful Attack burns exactly 1 HP and assigns its attacking player wallet the next index: 0 for the first successful strike, 1 for the second, and so on. Failed transactions receive no index.
 
-The Attack that reduces HP to zero is the **Terminal Attack** (or **Breaking Attack**). It receives the final index and closes striking, but its attacker does not automatically win. The instance enters `Drawing`; reward and SOL pile remain escrowed until `Settle` reveals the selected index and pays the player assigned to it (**D3**).
+The Attack that reduces HP to zero is the **Terminal Attack** (or **Breaking Attack**). It receives the final index and closes striking, but its attacker does not automatically win. The instance enters `Drawing` with final `N`; reward and SOL pile remain escrowed until `Settle` supplies the selected index and pays the player assigned to it (**D3**).
 
 ## Roles
 
 | Role            | Does                                                                                                                                                                                                                                                                | Does not                                                                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Game master** | Locks a **public** reward, sets the strike fee, funds Initialize PDA rent, completes Initialize, Reinitialize, and Close as fee payer, receives reclaimed account rent on Close, and receives the SOL pile at settlement. Uses the [arbiter webapp](deployment.md). | Pick HP. Know the arbiter's exact quote, realized offset, or remaining HP during play. Operate live proofs or read the backend (**A6**; enforcement [arbiter.md](arbiter.md) **O1**). |
-| **Arbiter**     | v1 webapp (frontend, backend, program client). Prices HP, holds keys, attaches proofs, commits the prototype draw, and constructs and signs `Settle`. Primary client for GM and players (**DEP4**).                                                                 | Provide trustless or verifiable prototype randomness.                                                                                                                                 |
-| **Player**      | Registers and may Attack repeatedly through the webapp. Each paid successful Attack adds one of that wallet's indexes to the Drawing range, so striking more increases its odds. Any participant may request `Settle` and pay its transaction fee.                  | Know exact remaining HP or the selected index before settlement.                                                                                                                      |
+| **Arbiter**     | v1 webapp (frontend, backend, program client). Prices HP, holds keys, attaches proofs, privately derives the same prototype winner for every `Settle`, and constructs and signs it. Primary client for GM and players (**DEP4**). | Provide trustless or verifiable prototype randomness. |
+| **Player**      | Registers and may Attack repeatedly through the webapp. Each paid successful Attack adds one of that wallet's indexes to the Drawing range, so striking more increases its odds. Any participant may request `Settle` and pay its transaction fee.                  | Know exact remaining HP during play or the selected index before a `Settle` transaction is built. |
 
 **Identity.** Prototype development uses wallet pubkeys only. [SAS](https://attest.solana.com/) unique-person identity and the GM-person Attack exclusion are deliberately deferred to avoid scope creep, but they MUST be implemented before product launch. The prototype does not prevent the same person from participating through another wallet and MUST NOT be treated as launch-ready identity enforcement.
 
@@ -44,9 +44,9 @@ The Attack that reduces HP to zero is the **Terminal Attack** (or **Breaking Att
 | Cap               | A registered player may Attack **without a cap** while `Live`. Every paid successful Attack adds another index for that wallet and increases its probability proportionally.                                                         |
 | Strike fee        | Fixed SOL into **that piñata's pile**, not the player prize.                                                                                                                                                                         |
 | Prize             | Public token reward (vault balance). Every successful strike's index remains eligible through the Drawing.                                                                                                                           |
-| Terminal Attack   | Receives the final index, closes striking, stores the arbiter's hidden selected-index commitment, and enters `Drawing`. No payout occurs.                                                                                            |
-| Settle            | Reveals the committed index and nonce. The player assigned that index gets the entire public reward; the GM gets the entire SOL pile. The instance enters `GameOver`.                                                                |
-| Terminal attacker | Wins only if the committed selected index was assigned to them.                                                                                                                                                                      |
+| Terminal Attack   | Receives the final index, closes striking, records final `N`, and enters `Drawing`. No payout occurs. |
+| Settle            | Supplies the privately derived index. The player assigned that index gets the entire public reward; the GM gets the entire SOL pile. The instance enters `GameOver`. |
+| Terminal attacker | Wins only if the selected index was assigned to them. |
 | After settlement  | **Close** (GM signs an arbiter-built teardown; rent back to the GM) or the dedicated **Reinitialize** instruction (new session, same piñata). Reinitialize is currently a fail-closed stub, so session reuse is not yet operational. |
 
 ## Why HP is hidden
@@ -64,7 +64,7 @@ flowchart TB
     hp[Initial and remaining HP]
     quote[Arbiter reward-in-SOL quote]
     off[Realized offset]
-    winner[Committed selected index]
+    winner[Privately derived selected index]
   end
   strike[Attack] --> visible
   strike -.->|cannot infer exactly| hidden
@@ -88,8 +88,8 @@ Normative language follows RFC 2119.
 - GM locks the reward and sets the fee. GM does **not** pick HP. The arbiter uses `HP = floor(reward_in_SOL / strike_fee_SOL) + offset` (**A3**).
 - Each successful Attack pays the fee, burns exactly 1 HP, and assigns its wallet the next zero-based chronological successful-Attack index. Failed transactions receive no index.
 - **Unlimited Attacks** per registered player while `Live`. Every assigned index remains eligible in the Drawing; repeated successful Attacks give a wallet more indexes and increase its probability proportionally.
-- The Terminal Attack is included in the Drawing range. Its successful zero proof closes striking, stores a hidden selected-index commitment, and transitions `Live → Drawing`; it does not settle or win automatically.
-- `Settle` is the only `Drawing → GameOver` transition. It opens the one persisted selection, pays the public reward to the player assigned the selected index and the entire SOL pile to the GM, and cannot execute twice. Refusing to sign can delay settlement but cannot cause a reroll.
+- The Terminal Attack is included in the Drawing range. Its successful zero proof closes striking, records final `N`, and transitions `Live → Drawing`; it does not settle or win automatically.
+- `Settle` is the only `Drawing → GameOver` transition. The arbiter MUST derive the same selected index for every rebuilt transaction, pay the public reward to the player assigned that index and the entire SOL pile to the GM, and cannot execute twice. Refusing to sign can delay settlement but MUST NOT change the arbiter's derived winner. The program cannot prove that unsigned requests named the same winner.
 - While `Drawing`, the program MUST reject Attack, Register, Initialize, Reinitialize, and Close and permit only `Settle`. A new session may start only after `GameOver`, through the dedicated Reinitialize instruction; its current stub does not yet permit that transition.
 - The v1 offset range is public and is `0..=5`. The realized offset, exact HP, remaining HP, and arbiter's exact price quote remain private during play.
 - **Prototype identity scope.** Prototype development uses wallet pubkeys only. SAS, unique-person enforcement, and rejection of Attacks by the GM's person id are deliberately deferred and MUST be implemented before product launch. The prototype does not close same-person multi-wallet behavior.

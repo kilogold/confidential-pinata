@@ -2,7 +2,7 @@
 
 Sequences among the participants in [deployment.md](deployment.md). On-chain: [program.md](program.md). Arbiter: [arbiter.md](arbiter.md).
 
-Instruction layouts, account metas, RPC shapes, commitment bytes, and proof byte formats are out of scope.
+Instruction layouts, account metas, RPC shapes, and proof byte formats are out of scope.
 
 **F0** applies to every flow. Initialize = **F1**. Attack = **F2**. Settle = **F3**. Reinitialize wire details remain **O2**; Close wire details remain **O3**.
 
@@ -83,7 +83,7 @@ Terminal closure is not “vault bytes look like zero.” It is a top-level `Ver
 | Branch       | Arbiter puts on Attack                                                                                                                                                   | On chain                                                                                                                                         |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Non-terminal | Burn proofs only. MUST NOT include `VerifyZeroCiphertext`.                                                                                                               | Fee and burn succeed; assign the wallet's next chronological index; increment count; remain `Live`. No payout.                                   |
-| Terminal     | Burn proofs, `VerifyZeroCiphertext` for post-burn `available_balance`, and a hiding/binding commitment to session, final `N`, persisted selected index, and fresh nonce. | Verify and bind; fee and burn succeed; assign index `N - 1`; set final Drawing range `[0, N - 1]`; store commitment; enter `Drawing`. No payout. |
+| Terminal     | Burn proofs and `VerifyZeroCiphertext` for post-burn `available_balance`. | Verify and bind; fee and burn succeed; assign index `N - 1`; record final `N` and range `[0, N - 1]`; enter `Drawing`. No payout. |
 
 Failed transactions receive no index. Omitting the zero proof when post-burn HP is zero is **A7**; only a malicious or exploited arbiter can land that path because a player cannot rebuild the already-partial-signed Attack (**F0**).
 
@@ -102,14 +102,12 @@ sequenceDiagram
     Note over BE: Burn proof only
   else post-burn HP is zero
     BE->>BE: generate zero proof
-    BE->>BE: calculate final N. Uniformly choose index in [0, N−1]
-    BE->>BE: persist selected index + fresh nonce once
-    BE->>BE: commit(session, N, index, nonce)
+    BE->>BE: calculate final N
   end
   BE->>BE: build and partial-sign one v1 transaction
   BE-->>FE: partially signed transaction
   FE-->>Player: transaction. Player is fee payer
-  Note over FE,Player: Terminal payload exposes commitment only, not selected index or nonce.
+  Note over FE,Player: Terminal payload contains no selected index.
   Player->>Prog: complete signature. Send via wallet RPC
   alt transaction fails
     Note over Prog: No index assignment
@@ -117,7 +115,7 @@ sequenceDiagram
     Note over Prog: Fee + HP − 1. Next index. Remain Live.
   else Terminal Attack succeeds
     Prog->>Prog: decode zero-proof sibling and byte-bind vault
-    Note over Prog: Final index included. Store commitment. Enter Drawing.
+    Note over Prog: Final index included. Record N. Enter Drawing.
     Note over Prog: Reward and pile remain escrowed.
   end
 ```
@@ -127,9 +125,9 @@ All Attack proof instructions and state changes MUST fit in one transaction-v1 m
 **MUST**
 
 1. Player connects and requests Attack through the webapp (**F0**).
-2. Backend generates burn proofs. If post-burn HP is zero, it also generates the bound zero proof, calculates final `N`, uniformly chooses one index from the Drawing range `[0, N - 1]`, generates a fresh nonce, persists that choice once, and supplies only the commitment (**A5**, prototype raffle selection).
+2. Backend generates burn proofs. If post-burn HP is zero, it also generates the bound zero proof and calculates final `N`. No winner is supplied in Attack (**A5**).
 3. Backend builds one v1 transaction containing proof instructions → Attack with `ConfidentialBurn` CPI → `ApplyPendingBurn` → `UpdateDecryptableSupply`, and partial-signs the required vault and mint authority operations.
-4. Player completes that transaction as fee payer and sends it through wallet RPC. The payload MUST NOT expose backend keys, exact quote, realized offset, HP, remaining HP, or the selected index/nonce.
+4. Player completes that transaction as fee payer and sends it through wallet RPC. The payload MUST NOT expose backend keys, exact quote, realized offset, HP, remaining HP, or the selected index.
 5. A successful Attack assigns its wallet the next zero-based chronological index. The Terminal Attack's index is included in the Drawing range. A non-terminal Attack remains `Live`; a valid Terminal Attack enters `Drawing`. Neither pays reward or pile.
 
 ## F3. Settle
@@ -148,17 +146,17 @@ sequenceDiagram
   Req->>FE: request Settle
   FE->>BE: instance + requester
   BE->>BE: confirm state = Drawing
-  BE->>BE: load the one persisted index + nonce
+  BE->>BE: read on-chain N and derive the same index
   BE->>Ledger: scan index-to-attacker history
   Ledger-->>BE: player assigned selected index
   BE->>BE: build Settle. Sign as arbiter
   BE-->>FE: partially signed transaction + visible result
   FE-->>Req: transaction. Requester is fee payer
   alt requester refuses to sign
-    Note over BE: Persisted result remains unchanged. A later requester receives the same result.
+    Note over BE: A later request derives the same winner.
   else requester signs
     Req->>Prog: complete signature. Send via wallet RPC
-    Prog->>Prog: verify instance, Drawing, arbiter, range, commitment
+    Prog->>Prog: verify instance, Drawing, arbiter, index range
     Prog->>Prog: atomically pay reward to assigned player and pile to GM
     Note over Prog: State is GameOver. Cannot settle twice
   end
@@ -168,15 +166,15 @@ sequenceDiagram
 
 1. Any participant requests settlement through the webapp.
 2. Arbiter confirms the instance is `Drawing`.
-3. Arbiter loads, without changing, the persisted final `N`, selected index, and nonce.
+3. Arbiter reads final `N` from the state PDA and derives the selected index from its long-lived secret, instance PDA, and `N` (**A2**, prototype raffle selection). It MUST derive the same index for every request without per-session storage.
 4. Arbiter scans chronological successful-Attack history and identifies the wallet assigned the selected index. The program does not scan historical transactions; prototype v1 trusts this mapping.
-5. Arbiter builds `Settle`, reveals the selected index and nonce, supplies that player's reward account, and signs as configured arbiter authority.
+5. Arbiter builds `Settle`, supplies the selected index and that player's reward account, and signs as configured arbiter authority.
 6. Requester signs as fee payer and sends through their wallet RPC.
-7. Program verifies the correct instance, state `Drawing`, configured arbiter signer, `index < N`, and the commitment opening bound to session, `N`, index, and nonce.
+7. Program verifies the correct instance, state `Drawing`, configured arbiter signer, and `index < N`. It trusts the arbiter's private draw and index-to-wallet mapping.
 8. Program atomically pays the entire public reward to the player assigned the selected index and the entire SOL pile to the GM.
 9. Program enters `GameOver`; the state guard prevents a second settlement.
 
-If a requester refuses after seeing the result, the arbiter MUST return the same committed result to every subsequent requester. Refusal can delay settlement but cannot trigger a reroll. Arbiter refusal to build or sign remains a censorship/liveness risk (**A7**).
+If a requester refuses after seeing the result, the arbiter MUST derive and return the same index and recipient to every subsequent requester. An expired transaction may also be rebuilt with different bytes, including a new blockhash or fee payer, while keeping the same winner. Refusal can delay settlement but MUST NOT trigger a different draw. Only one `Settle` can pay. Without a commitment, the program cannot prove two unsigned requests named the same winner; this remains trusted arbiter behavior. Arbiter refusal to build or sign remains a censorship/liveness risk (**A7**).
 
 ## Decided
 
@@ -194,7 +192,7 @@ Close is arbiter-constructed (**DEP4**, **D4**). The shared HP mint MUST NOT be 
 
 ### O4. Pre-launch VRF wire flow
 
-Before launch, winner selection MUST use VRF or equivalent publicly verifiable, unpredictable randomness (**A8**). Provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding are undecided. An asynchronous design may commit a randomness request when striking closes rather than retain the prototype selected-index commitment. The flow also depends on whether the program must enforce index-to-attacker mapping on-chain or a publicly reproducible successful-Attack-history scan is sufficient ([arbiter.md](arbiter.md) **O2**). No wire flow is invented until those choices are made.
+Before launch, winner selection MUST use VRF or equivalent publicly verifiable, unpredictable randomness (**A8**). Provider, request/reveal lifecycle, state fields, transaction sequence, and fee funding are undecided. An asynchronous design may commit a randomness request when striking closes; the prototype private draw does not decide that architecture. The flow also depends on whether the program must enforce index-to-attacker mapping on-chain or a publicly reproducible successful-Attack-history scan is sufficient ([arbiter.md](arbiter.md) **O2**). No wire flow is invented until those choices are made.
 
 ### Player Registration
 Registration via Solana Attestation Service (SAS) is required before striking any piñata. This is the sybil resistance mechanism.

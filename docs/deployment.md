@@ -17,14 +17,14 @@ flowchart TB
 
   subgraph arbiter [Arbiter webapp]
     client[Piñata program client]
-    selection[Prototype persisted index + nonce]
+    selection[Stateless prototype winner derivation]
   end
 
   subgraph solana [Solana]
     program[Piñata program]
     hpMint[Shared HP mint]
     subgraph pdas [Per-piñata PDAs]
-      state[State: lifecycle, Attack count,<br/>selected-index commitment]
+      state[State: lifecycle and Attack count,<br/>final N in Drawing]
       hpVault[HP vault token account]
       rewardVault[Reward vault]
       solPile[SOL fee pile]
@@ -39,7 +39,7 @@ flowchart TB
   gmWallet -.->|MUST NOT read backend| arbiter
 ```
 
-**Figure 1.** One shared HP mint. Each instance has a PDA-addressed HP token account with arbiter authority. Its state PDA holds lifecycle state, successful-Attack count, and the Terminal Attack's selected-index commitment. Exact fields and bytes remain instruction-layout details. Reward vault and SOL pile stay program-controlled and locked through `Drawing`.
+**Figure 1.** One shared HP mint. Each instance has a PDA-addressed HP token account with arbiter authority. Its state PDA holds lifecycle state and successful-Attack count, which becomes final `N` at the Terminal Attack. Exact fields and bytes remain instruction-layout details. Reward vault and SOL pile stay program-controlled and locked through `Drawing`.
 
 There is no separate participation asset or per-strike account. Successful Attack history records chronological index-to-wallet assignments. The arbiter performs the prototype history scan; the program does not scan historical transactions.
 
@@ -52,8 +52,8 @@ There is no separate participation asset or per-strike account. Successful Attac
 | **GM wallet**               | Client                                                                   | Connects to the webapp. Completes Initialize, Reinitialize, and Close as fee payer; pays PDA rent. Receives the SOL pile at `Settle` and instance rent at Close. MUST NOT hold live HP keys or authorities.                    |
 | **Player wallet**           | Client                                                                   | Connects to the webapp. Signs Register and Attack. Pays the strike fee. A player may also request `Settle`.                                                                                                                    |
 | **Settle requester wallet** | Client                                                                   | Any participant requesting settlement. Signs the arbiter-built `Settle` transaction as fee payer and sends it through that wallet's RPC. Need not be the winner, Terminal Attacker, or GM.                                     |
-| **Arbiter webapp**          | Off-chain (frontend, backend, and program client as **one** participant) | Primary client. Prices the reward, draws HP, holds keys, attaches HP proofs, makes and persists the prototype winner selection, maps its selected index to a wallet from public Attack history, and builds and signs `Settle`. |
-| **Piñata program**          | Solana                                                                   | Six instructions, lifecycle enforcement, commitment opening checks, and atomic settlement. Reinitialize is currently a fail-closed stub. Not a user-facing client and cannot scan historical transactions.                     |
+| **Arbiter webapp**          | Off-chain (frontend, backend, and program client as **one** participant) | Primary client. Prices the reward, draws HP, holds keys, attaches HP proofs, derives the same prototype winner for each `Settle` request, maps its index to a wallet from public Attack history, and builds and signs `Settle`. |
+| **Piñata program**          | Solana                                                                   | Six instructions, lifecycle and selected-index range checks, and atomic settlement. Reinitialize is currently a fail-closed stub. Not a user-facing client and cannot scan historical transactions. |
 
 Isolation (**DEP3**, **A6**) applies to **backend secrets**, not to using the frontend to request or sign a transaction.
 
@@ -91,17 +91,17 @@ Normative language follows RFC 2119.
 
 A v1 deployment MUST include a GM wallet, one or more participant wallets, one arbiter webapp, the Piñata program on a Solana cluster, and one shared HP mint (**DEP6**). Each live piñata MUST have its own PDA set: state, HP vault token account, reward vault, and SOL fee pile.
 
-The state PDA MUST represent the `Uninitialized`, `Live`, `Drawing`, `GameOver`, and `Closed` lifecycle as applicable, track successful Attack count for the session, and store the terminal selected-index commitment. It MUST NOT store a separate collection of participation objects.
+The state PDA MUST represent the `Uninitialized`, `Live`, `Drawing`, `GameOver`, and `Closed` lifecycle as applicable and track successful Attack count for the session, retaining final `N` in `Drawing`. It MUST NOT store a prototype winner, selected-index commitment, or separate collection of participation objects.
 
 ### DEP2. Arbiter is the webapp
 
-The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay or named component. HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and prototype raffle opening MUST live in that webapp's backend, not in the frontend, a PDA, or the GM wallet before settlement.
+The arbiter MUST be one webapp participant: frontend, backend, and the Piñata program client as a single deployment abstraction, not a separate extra relay or named component. HP ElGamal and AES (vault and supply), HP mint authority, HP vault authority, and the long-lived prototype raffle derivation key MUST live in that webapp's backend, not in the frontend, a PDA, or the GM wallet.
 
-v1 MUST keep the arbiter Solana authority keypair in a host-local env file readable by the backend. HP ElGamal and AES MUST be derived from that keypair at runtime and MUST NOT be stored as separate env values. The prototype selected index and nonce MUST be chosen once and persisted securely through settlement (**A2**, prototype raffle selection).
+v1 MUST keep the arbiter Solana authority keypair in a host-local env file readable by the backend. HP ElGamal, AES, and the prototype raffle HMAC key MUST be derived from that keypair at runtime with separate derivation domains and MUST NOT be stored as separate env values. The backend MUST NOT retain a per-session prototype winner or `N` record between requests (**A2**, prototype raffle selection).
 
 ### DEP3. Isolation on the wire
 
-The GM wallet MUST NOT have operational access to the arbiter backend: keys, exact HP, remaining HP, realized offset, exact price quote, pre-settlement selected index/nonce, or per-strike refusal. Using the frontend to sign Initialize or Close does not count as reading the arbiter. The offset range `0..=5` is public. Enforcement is [arbiter.md](arbiter.md) **O1**.
+The GM wallet MUST NOT have operational access to the arbiter backend: keys, exact HP, remaining HP, realized offset, exact price quote, selected index during `Live`, or per-strike refusal. A `Settle` requester may see the selected index in the unsigned transaction after `Drawing` begins. Using the frontend to sign Initialize or Close does not count as reading the arbiter. The offset range `0..=5` is public. Enforcement is [arbiter.md](arbiter.md) **O1**.
 
 ### DEP4. Program client is in the webapp
 
@@ -109,7 +109,7 @@ The Piñata program client MUST live in the arbiter webapp. GM and participant w
 
 Initialize, Attack, and Close require ZK proofs generated from backend-held vault ElGamal keys (**A1**, **A2**, **A5**). Close MUST be arbiter-constructed: after `GameOver` the HP vault still holds an encrypt(0) leftover, not empty bytes, and Token-2022 will not close that account without a leftover-zero proof. The arbiter backend MUST attach that proof and partial-sign as HP vault authority (**DEP6**); the GM wallet completes as fee payer (**F0**). Close MUST NOT close the shared HP mint.
 
-Settle requires the configured arbiter signer and MUST be built by the webapp from the one persisted opening and the player assigned the selected index in successful Attack history. Any participant may request it and completes as fee payer (**F3**). Register does not need vault secrets; v1 still routes it through the webapp so there is one client.
+Settle requires the configured arbiter signer and MUST be built by the webapp from the same privately derived index on every request and the player assigned that index in successful Attack history. Any participant may request it and completes as fee payer (**F3**). Register does not need vault secrets; v1 still routes it through the webapp so there is one client.
 
 Attack MUST CPI `ConfidentialBurn` so the strike, index assignment, and strike fee stay one instruction (**D3**). The vault-authority signer is the arbiter, not a PDA. Only the instance HP vault's confidential balance is that piñata; burning from an unrelated token account is irrelevant. A player MUST NOT assemble Attack.
 
