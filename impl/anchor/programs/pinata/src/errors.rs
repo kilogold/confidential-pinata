@@ -22,4 +22,12 @@ pub enum PinataError {
     Token2022Cpi,
     #[msg("reinitialize is not implemented")]
     ReinitializeNotImplemented,
+    #[msg("session is not live")]
+    SessionNotLive,
+    #[msg("zero proof instruction offset must be zero or reference a preceding instruction")]
+    InvalidZeroProofInstructionOffset,
+    #[msg("terminal zero proof is invalid or does not bind the HP vault")]
+    InvalidTerminalZeroProof,
+    #[msg("successful attack count overflowed")]
+    AttackCountOverflow,
 }

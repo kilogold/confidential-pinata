@@ -19,6 +19,7 @@ export enum SessionStatus {
   Uninitialized,
   Live,
   GameOver,
+  Drawing,
 }
 
 export type SessionStatusArgs = SessionStatus;

@@ -109,6 +109,7 @@ pub fn initialize_handler(
     session.reward_mint = ctx.accounts.reward_mint.key();
     session.strike_fee_lamports = strike_fee_lamports;
     session.reward_amount = reward_amount;
+    session.successful_attack_count = 0;
     session.status = SessionStatus::Live;
     session.bump = ctx.bumps.session;
     session.hp_vault_bump = ctx.bumps.hp_vault;

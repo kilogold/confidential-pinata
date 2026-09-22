@@ -54,4 +54,29 @@ pub mod pinata {
     pub fn reinitialize(ctx: Context<Reinitialize>, session_id: String) -> Result<()> {
         instructions::reinitialize::reinitialize_handler(ctx, session_id)
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn attack(
+        ctx: Context<Attack>,
+        session_id: String,
+        equality_proof_instruction_offset: i8,
+        ciphertext_validity_proof_instruction_offset: i8,
+        range_proof_instruction_offset: i8,
+        zero_proof_instruction_offset: i8,
+        new_decryptable_available_balance: [u8; 36],
+        burn_amount_auditor_ciphertext_lo: [u8; 64],
+        burn_amount_auditor_ciphertext_hi: [u8; 64],
+    ) -> Result<()> {
+        instructions::attack::attack_handler(
+            ctx,
+            session_id,
+            equality_proof_instruction_offset,
+            ciphertext_validity_proof_instruction_offset,
+            range_proof_instruction_offset,
+            zero_proof_instruction_offset,
+            new_decryptable_available_balance,
+            burn_amount_auditor_ciphertext_lo,
+            burn_amount_auditor_ciphertext_hi,
+        )
+    }
 }

@@ -60,6 +60,7 @@ export type Session = {
   rewardMint: Address;
   strikeFeeLamports: bigint;
   rewardAmount: bigint;
+  successfulAttackCount: bigint;
   status: SessionStatus;
   bump: number;
   hpVaultBump: number;
@@ -73,6 +74,7 @@ export type SessionArgs = {
   rewardMint: Address;
   strikeFeeLamports: number | bigint;
   rewardAmount: number | bigint;
+  successfulAttackCount: number | bigint;
   status: SessionStatusArgs;
   bump: number;
   hpVaultBump: number;
@@ -90,6 +92,7 @@ export function getSessionEncoder(): FixedSizeEncoder<SessionArgs> {
       ["rewardMint", getAddressEncoder()],
       ["strikeFeeLamports", getU64Encoder()],
       ["rewardAmount", getU64Encoder()],
+      ["successfulAttackCount", getU64Encoder()],
       ["status", getSessionStatusEncoder()],
       ["bump", getU8Encoder()],
       ["hpVaultBump", getU8Encoder()],
@@ -109,6 +112,7 @@ export function getSessionDecoder(): FixedSizeDecoder<Session> {
     ["rewardMint", getAddressDecoder()],
     ["strikeFeeLamports", getU64Decoder()],
     ["rewardAmount", getU64Decoder()],
+    ["successfulAttackCount", getU64Decoder()],
     ["status", getSessionStatusDecoder()],
     ["bump", getU8Decoder()],
     ["hpVaultBump", getU8Decoder()],
@@ -176,5 +180,5 @@ export async function fetchAllMaybeSession(
 }
 
 export function getSessionSize(): number {
-  return 125;
+  return 133;
 }

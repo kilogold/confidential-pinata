@@ -35,11 +35,15 @@ import {
 } from "@solana/kit/program-client-core";
 import { getSessionCodec, type Session, type SessionArgs } from "../accounts";
 import {
+  getAttackInstructionAsync,
   getInitializeInstructionAsync,
   getReinitializeInstructionAsync,
+  parseAttackInstruction,
   parseInitializeInstruction,
   parseReinitializeInstruction,
+  type AttackAsyncInput,
   type InitializeAsyncInput,
+  type ParsedAttackInstruction,
   type ParsedInitializeInstruction,
   type ParsedReinitializeInstruction,
   type ReinitializeAsyncInput,
@@ -80,6 +84,7 @@ export function identifyPinataAccount(
 }
 
 export enum PinataInstruction {
+  Attack,
   Initialize,
   Reinitialize,
 }
@@ -88,6 +93,17 @@ export function identifyPinataInstruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array
 ): PinataInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([197, 26, 63, 242, 77, 247, 101, 119])
+      ),
+      0
+    )
+  ) {
+    return PinataInstruction.Attack;
+  }
   if (
     containsBytes(
       data,
@@ -120,6 +136,9 @@ export type ParsedPinataInstruction<
   TProgram extends string = "Dj2EhDwEXx5MpbxwPvVTCoZq6DrYbLURpgkBjTpNjAur",
 > =
   | ({
+      instructionType: PinataInstruction.Attack;
+    } & ParsedAttackInstruction<TProgram>)
+  | ({
       instructionType: PinataInstruction.Initialize;
     } & ParsedInitializeInstruction<TProgram>)
   | ({
@@ -131,6 +150,13 @@ export function parsePinataInstruction<TProgram extends string>(
 ): ParsedPinataInstruction<TProgram> {
   const instructionType = identifyPinataInstruction(instruction);
   switch (instructionType) {
+    case PinataInstruction.Attack: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: PinataInstruction.Attack,
+        ...parseAttackInstruction(instruction),
+      };
+    }
     case PinataInstruction.Initialize: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -168,6 +194,9 @@ export type PinataPluginAccounts = {
 };
 
 export type PinataPluginInstructions = {
+  attack: (
+    input: AttackAsyncInput
+  ) => ReturnType<typeof getAttackInstructionAsync> & SelfPlanAndSendFunctions;
   initialize: (
     input: InitializeAsyncInput
   ) => ReturnType<typeof getInitializeInstructionAsync> &
@@ -181,8 +210,8 @@ export type PinataPluginInstructions = {
 export type PinataPluginPdas = {
   session: typeof findSessionPda;
   hpVault: typeof findHpVaultPda;
-  rewardVault: typeof findRewardVaultPda;
   solPile: typeof findSolPilePda;
+  rewardVault: typeof findRewardVaultPda;
 };
 
 export type PinataPluginRequirements = ClientWithRpc<
@@ -199,6 +228,11 @@ export function pinataProgram() {
       pinata: <PinataPlugin>{
         accounts: { session: addSelfFetchFunctions(client, getSessionCodec()) },
         instructions: {
+          attack: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAttackInstructionAsync(input)
+            ),
           initialize: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -213,8 +247,8 @@ export function pinataProgram() {
         pdas: {
           session: findSessionPda,
           hpVault: findHpVaultPda,
-          rewardVault: findRewardVaultPda,
           solPile: findSolPilePda,
+          rewardVault: findRewardVaultPda,
         },
         identifyAccount: identifyPinataAccount,
         identifyInstruction: identifyPinataInstruction,

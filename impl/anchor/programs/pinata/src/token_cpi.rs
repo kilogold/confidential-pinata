@@ -8,7 +8,9 @@ use solana_address::Address;
 use spl_token_2022_interface::{
     extension::{
         confidential_mint_burn::{
-            instruction::{ConfidentialMintBurnInstruction, MintInstructionData},
+            instruction::{
+                BurnInstructionData, ConfidentialMintBurnInstruction, MintInstructionData,
+            },
             ConfidentialMintBurn,
         },
         confidential_transfer::{
@@ -229,6 +231,54 @@ pub fn apply_pending_balance_cpi<'info>(
         &apply_ix,
         &[
             hp_vault.clone(),
+            arbiter.clone(),
+            token_2022_program.clone(),
+        ],
+    )
+    .map_err(|_| error!(PinataError::Token2022Cpi))?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn confidential_burn<'info>(
+    hp_vault: &AccountInfo<'info>,
+    hp_mint: &AccountInfo<'info>,
+    arbiter: &AccountInfo<'info>,
+    instructions_sysvar: &AccountInfo<'info>,
+    token_2022_program: &AccountInfo<'info>,
+    new_decryptable_available_balance: &[u8; 36],
+    burn_amount_auditor_ciphertext_lo: &[u8; 64],
+    burn_amount_auditor_ciphertext_hi: &[u8; 64],
+    equality_proof_instruction_offset: i8,
+    ciphertext_validity_proof_instruction_offset: i8,
+    range_proof_instruction_offset: i8,
+) -> Result<()> {
+    let data = BurnInstructionData {
+        new_decryptable_available_balance: pod_read_unaligned(new_decryptable_available_balance),
+        burn_amount_auditor_ciphertext_lo: pod_read_unaligned(burn_amount_auditor_ciphertext_lo),
+        burn_amount_auditor_ciphertext_hi: pod_read_unaligned(burn_amount_auditor_ciphertext_hi),
+        equality_proof_instruction_offset,
+        ciphertext_validity_proof_instruction_offset,
+        range_proof_instruction_offset,
+    };
+    let burn_ix = extension_ix(
+        token_2022_program.key,
+        vec![
+            AccountMeta::new(*hp_vault.key, false),
+            AccountMeta::new(*hp_mint.key, false),
+            AccountMeta::new_readonly(*instructions_sysvar.key, false),
+            AccountMeta::new_readonly(*arbiter.key, true),
+        ],
+        TokenInstruction::ConfidentialMintBurnExtension,
+        ConfidentialMintBurnInstruction::Burn as u8,
+        &data,
+    );
+    invoke(
+        &burn_ix,
+        &[
+            hp_vault.clone(),
+            hp_mint.clone(),
+            instructions_sysvar.clone(),
             arbiter.clone(),
             token_2022_program.clone(),
         ],

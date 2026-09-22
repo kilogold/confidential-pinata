@@ -966,8 +966,10 @@ dependencies = [
  "bytemuck",
  "solana-address 2.6.1",
  "solana-instruction",
+ "solana-instructions-sysvar",
  "solana-program-option",
  "solana-sdk-ids",
+ "solana-zk-elgamal-proof-interface",
  "spl-token-2022-interface 3.1.1",
 ]
 

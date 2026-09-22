@@ -6,5 +6,6 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./attack";
 export * from "./initialize";
 export * from "./reinitialize";
