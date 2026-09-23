@@ -1,6 +1,7 @@
 {
   "name": "confidential-pinata",
   "scripts": {
+    "anchor:account-session": "bash scripts/anchor-account.sh",
     "anchor-build": "cd anchor && anchor build --ignore-keys",
     "anchor-test": "cd anchor && anchor test",
     "build": "next build",

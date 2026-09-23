@@ -4,8 +4,8 @@ import { useWallet } from "./lib/wallet/context";
 import { ThemeToggle } from "./components/theme-toggle";
 import { ClusterSelect } from "./components/cluster-select";
 import { WalletButton } from "./components/wallet-button";
-import { RoleSection } from "./components/role-section";
 import { GmInitialize } from "./components/gm-initialize";
+import { PlayerStrike } from "./components/player-strike";
 
 export default function Home() {
   const { status } = useWallet();
@@ -39,11 +39,7 @@ export default function Home() {
               </button>
             </div>
           </section>
-          <RoleSection
-            title="Player"
-            actions={["Register", "Strike"]}
-            enabled={enabled}
-          />
+          <PlayerStrike enabled={enabled} />
         </div>
       </main>
     </div>

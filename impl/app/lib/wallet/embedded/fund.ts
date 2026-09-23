@@ -6,6 +6,7 @@ import { loadOrCreateEmbeddedSigner } from "./storage";
 
 const GM_SOL_LAMPORTS = 5 * LAMPORTS_PER_SOL;
 const GM_USDC_BASE_UNITS = 20_000_000;
+const PLAYER_SOL_LAMPORTS = 5 * LAMPORTS_PER_SOL;
 
 type RpcResponse<T> = {
   result?: T;
@@ -57,7 +58,15 @@ async function fundGmOnSurfpool(): Promise<void> {
   ]);
 }
 
+async function fundPlayerOnSurfpool(): Promise<void> {
+  const player = await loadOrCreateEmbeddedSigner("player");
+  await surfpoolRpc("surfnet_setAccount", [
+    player.address,
+    { lamports: PLAYER_SOL_LAMPORTS, owner: SYSTEM_PROGRAM_ADDRESS },
+  ]);
+}
+
 export async function fundEmbeddedWallets(): Promise<void> {
   await fundGmOnSurfpool();
-  // TODO: fund player on Surfpool
+  await fundPlayerOnSurfpool();
 }

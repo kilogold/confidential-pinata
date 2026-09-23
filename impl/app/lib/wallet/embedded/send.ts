@@ -11,6 +11,7 @@ import {
   type Address,
   type KeyPairSigner,
 } from "@solana/kit";
+import { TRANSACTION_V1_WIRE_PREFIX } from "../../constants";
 import {
   CLUSTERS,
   getClusterUrl,
@@ -21,8 +22,6 @@ type LocalRpc = Pick<
   ReturnType<typeof createSolanaRpc>,
   "simulateTransaction" | "sendTransaction"
 >;
-
-const TRANSACTION_V1_PREFIX = 0x81;
 
 export async function signAndSendEmbeddedTransaction(
   bytes: Uint8Array,
@@ -41,7 +40,7 @@ export async function signAndSendEmbeddedTransaction(
   if (!cluster || !CLUSTERS.includes(cluster)) {
     throw new Error(`Unsupported Solana cluster: ${chain}`);
   }
-  if (bytes[0] !== TRANSACTION_V1_PREFIX) {
+  if (bytes[0] !== TRANSACTION_V1_WIRE_PREFIX) {
     throw new Error("Local wallet requires a transaction-v1 payload");
   }
 

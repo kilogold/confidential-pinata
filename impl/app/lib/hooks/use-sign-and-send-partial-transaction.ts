@@ -8,10 +8,10 @@ import {
   type Signature,
 } from "@solana/kit";
 import { useCluster } from "../../components/cluster-context";
+import { TRANSACTION_V1_WIRE_PREFIX } from "../constants";
 import { getClusterUrl } from "../solana-client";
 import { useWallet } from "../wallet/context";
 
-const TRANSACTION_V1_PREFIX = 0x81;
 const CONFIRMATION_POLL_INTERVAL_MS = 400;
 const CONFIRMATION_TIMEOUT_MS = 90_000;
 
@@ -39,24 +39,24 @@ function decodeBase64Transaction(value: string): Uint8Array {
   try {
     binary = atob(value);
   } catch {
-    throw new Error("Initialize returned a malformed transaction");
+    throw new Error("The server returned a malformed transaction");
   }
   if (binary.length === 0) {
-    throw new Error("Initialize returned an empty transaction");
+    throw new Error("The server returned an empty transaction");
   }
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i);
   }
-  if (bytes[0] !== TRANSACTION_V1_PREFIX) {
-    throw new Error("Initialize did not return a transaction-v1 payload");
+  if (bytes[0] !== TRANSACTION_V1_WIRE_PREFIX) {
+    throw new Error("The server did not return a transaction-v1 payload");
   }
   return bytes;
 }
 
 function parseLastValidBlockHeight(value: string): bigint {
   if (!/^\d+$/.test(value)) {
-    throw new Error("Initialize returned an invalid blockhash lifetime");
+    throw new Error("The server returned an invalid blockhash lifetime");
   }
   return BigInt(value);
 }
@@ -67,18 +67,18 @@ function sleep(ms: number): Promise<void> {
 
 export function parsePreparedTransaction(value: unknown): PreparedTransaction {
   if (!value || typeof value !== "object") {
-    throw new Error("Initialize returned an invalid transaction");
+    throw new Error("The server returned an invalid transaction");
   }
   const candidate = value as Partial<PreparedTransaction>;
   if (
     typeof candidate.transaction !== "string" ||
     typeof candidate.lastValidBlockHeight !== "string"
   ) {
-    throw new Error("Initialize returned an invalid transaction");
+    throw new Error("The server returned an invalid transaction");
   }
   const bytes = decodeBase64Transaction(candidate.transaction);
   parseLastValidBlockHeight(candidate.lastValidBlockHeight);
-  console.info("Received prepared Initialize transaction", {
+  console.info("Received prepared transaction", {
     base64Length: candidate.transaction.length,
     lastValidBlockHeight: candidate.lastValidBlockHeight,
     ...getTransactionDebugInfo(bytes),
@@ -124,7 +124,7 @@ export function useSignAndSendPartialTransaction() {
         }
 
         setProgress({ phase: "awaiting-wallet" });
-        console.info("Submitting prepared Initialize transaction to wallet", {
+        console.info("Submitting prepared transaction to wallet", {
           chain,
           lastValidBlockHeight: lastValidBlockHeight.toString(),
           ...getTransactionDebugInfo(bytes),
