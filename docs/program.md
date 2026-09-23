@@ -14,9 +14,9 @@ stateDiagram-v2
 
   Live --> Live: Register
   Live --> Live: Attack — HP remains
-  Live --> Drawing: Terminal Attack\nzero proof succeeds\nrecord final N
+  Live --> Drawing: Terminal Attack<br/>zero proof succeeds<br/>record final N
 
-  Drawing --> GameOver: Settle\narbiter supplies index\npay winner and GM
+  Drawing --> GameOver: Settle<br/>arbiter supplies index<br/>pay winner and GM
 
   GameOver --> Live: Reinitialize new session
   GameOver --> Closed: Close
